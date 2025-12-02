@@ -23,16 +23,26 @@ const SUPABASE_AUTH_CALLBACKS = [
   '/auth/v1/token',
 ];
 
+function isPublicPath(pathname: string) {
+  // Root is public only for the exact root path
+  if (pathname === '/') return true;
+
+  // For other paths, don't let '/' match everything
+  return PUBLIC_PATHS
+    .filter((path) => path !== '/')
+    .some((path) => {
+      // Exact match (/auth/register) or nested (/legal/terms)
+      return pathname === path || pathname.startsWith(`${path}/`);
+    });
+}
+
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
 
   console.log('🧩 MIDDLEWARE START', pathname);
 
   /**
-   * 0. SUPABASE RESET FLOW:
-   * If request contains ?type=recovery, let it through.
-   * Link example:
-   * https://project.supabase.co/auth/v1/verify?type=recovery&token=xxxx
+   * 0. SUPABASE RESET FLOW — allow password recovery links
    */
   if (searchParams.get('type') === 'recovery') {
     console.log('🔐 Allowing Supabase recovery URL');
@@ -41,7 +51,6 @@ export function middleware(request: NextRequest) {
 
   /**
    * 1. Allow Supabase internal callback endpoints
-   * These must NEVER be redirected, blocked, or wrapped.
    */
   if (SUPABASE_AUTH_CALLBACKS.some((prefix) => pathname.startsWith(prefix))) {
     console.log('🔓 Allowing Supabase callback:', pathname);
@@ -51,21 +60,16 @@ export function middleware(request: NextRequest) {
   /**
    * 2. Skip middleware entirely for public routes
    */
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  if (isPublicPath(pathname)) {
     console.log('🚫 Skipping middleware for public path:', pathname);
     return NextResponse.next();
   }
 
   /**
-   * 3. All remaining routes: require authentication
+   * 3. TEMP: allow all non-public routes through
+   * We are not enforcing auth here yet; (app)/layout will handle it.
    */
-  const token = request.cookies.get('sb-access-token')?.value;
-
-  if (!token) {
-    console.log('🔒 Redirect: user not logged in');
-    return NextResponse.redirect(new URL('/', request.url));
-  }
-
+  console.log('➡ Allowing non-public path without auth check (temp):', pathname);
   return NextResponse.next();
 }
 

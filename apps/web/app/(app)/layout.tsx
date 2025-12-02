@@ -1,3 +1,4 @@
+// apps/web/app/(app)/layout.tsx
 import type { ReactNode } from 'react';
 
 import { redirect } from 'next/navigation';
@@ -6,9 +7,14 @@ import AppShell from '~/components/layout/AppShell';
 import { getClaims } from '~/lib/auth/claims';
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  // Require authentication
   const claims = await getClaims();
-  if (!claims) redirect('/login');
+  console.log('claims in (app)/layout', claims);
 
-  return <AppShell user={claims}>{children}</AppShell>;
+  // In production, enforce auth
+  if (process.env.NODE_ENV === 'production' && !claims) {
+    redirect('/');
+  }
+
+  // In dev, allow access even if claims are null so we can debug
+  return <AppShell user={claims as any}>{children}</AppShell>;
 }
