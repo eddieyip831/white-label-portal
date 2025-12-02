@@ -199,24 +199,24 @@ No manual sequences are required for UUIDs.
 
 ## 6. Development Conventions
 
-- **RLS first, UI second**  
+- **RLS first, UI second**
   - All queries must respect tenant scoping (`tenant_id = auth.jwt().tenant_id` where applicable).
   - UI should never rely solely on client‑side checks for security.
 
-- **Route groups**  
+- **Route groups**
   - `(app)` – authenticated shell (requires logged‑in user).
   - `(auth)` – login/register/forgot/reset flows.
   - Public routes (marketing, legal) live outside `(app)`.
 
-- **Admin area**  
+- **Admin area**
   - All routes under `apps/web/app/(app)/admin` must be protected by server‑side guards (e.g. `requireRole('admin' | 'super_admin')`).
   - Use the shared admin layout/sidebar for all admin pages.
 
-- **Modules**  
+- **Modules**
   - New product areas should go under `~/modules/<module-name>` for code, plus matching DB objects and entries in `modules`, `permissions`, `functions`, and `tier_functions`.
   - Avoid tenant‑specific customisation; configuration should be **global**, with tiers driving variation.
 
-- **File tree discipline**  
+- **File tree discipline**
   - Use `bash scripts/validate-file-tree.sh` to compare the current tree against `docs/system/file-tree-baseline.txt`.
   - Only update `file-tree-baseline.txt` when structural changes are intentional and stable.
 
@@ -249,6 +249,14 @@ You can render the Mermaid diagrams either:
 
 ---
 
-## 9. License
+## 9. Acknowledgements
+
+This project is originally based on the
+[MakerKit Next.js SaaS Starter Kit Lite](https://github.com/makerkit/nextjs-saas-starter-kit-lite)
+and has been customised into a white-label multi-tenant portal.
+
+---
+
+## 10. License
 
 TBD – choose and document the license appropriate for this project.

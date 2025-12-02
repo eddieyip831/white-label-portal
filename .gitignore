@@ -42,3 +42,4 @@ pnpm-debug.log*
 *.tmp
 *.bak
 
+docs/chatgpt-project-instructions.md

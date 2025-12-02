@@ -8,7 +8,9 @@ It covers:
 - **RBAC** (roles, permissions, mappings, tier permissions)
 - **Navigation & modules** (function groups, functions, tier functions, modules)
 - **User attributes** (definitions and values)
+- **Legal consents** (privacy, terms, marketing)
 - **Database functions & view** used for claims and admin reporting
+
 
 ## 1. Conventions & UUID Strategy
 
@@ -23,7 +25,7 @@ It covers:
 
 ### 1.2 UUID generation (current & recommended practice)
 
-In this schema, UUID primary keys are defined as:
+UUID primary keys are defined as:
 
 ```sql
 id uuid DEFAULT gen_random_uuid() NOT NULL
@@ -45,9 +47,10 @@ Alternatives you might consider in future:
 
 All tables below that have `id` as a primary key use this pattern unless otherwise noted.
 
+
 ## 2. ER Diagrams
 
-### 2.1 Core Multi-tenant + User + RBAC
+### 2.1 Core Multi-tenant + User + RBAC + Legal Consents
 
 This view focuses on:
 
@@ -55,6 +58,7 @@ This view focuses on:
 - **Users & profiles**: global Supabase users, plus per-tenant profile and membership.
 - **RBAC**: roles, permissions, and mappings at tenant scope.
 - **Tier → Permission mapping**: how monetization tiers drive permissions.
+- **Legal consents**: per-user agreement to Privacy Policy, Terms, and Marketing.
 
 ```mermaid
 erDiagram
@@ -83,7 +87,8 @@ erDiagram
   USER_PROFILE {
     uuid id PK        "auth.users.id"
     uuid tenant_id FK
-    text full_name
+    text first_name
+    text last_name
     uuid tier_id FK
     jsonb attributes
     timestamptz created_at
@@ -134,17 +139,39 @@ erDiagram
     uuid tenant_id FK
   }
 
+  LEGAL_DOCUMENTS {
+    uuid id PK
+    text code          "privacy_policy, terms, marketing"
+    text version       "e.g. 2025-01 or v1.2"
+    text title
+    text url
+    timestamptz published_at
+    bool is_active
+  }
+
+  USER_CONSENTS {
+    uuid id PK
+    uuid user_id FK    "auth.users.id"
+    uuid tenant_id FK  "optional, for tenant-specific docs"
+    uuid document_id FK
+    text version       "denormalised snapshot"
+    timestamptz consented_at
+    timestamptz revoked_at
+  }
+
   %% Relationships
 
   AUTH_USERS ||--|| USER_PROFILE : "has profile"
   AUTH_USERS ||--o{ TENANT_MEMBERS : "member of"
   AUTH_USERS ||--o{ USER_ROLES : "assigned roles"
+  AUTH_USERS ||--o{ USER_CONSENTS : "has consents"
 
   TENANTS ||--o{ USER_PROFILE : "profiles in"
   TENANTS ||--o{ TENANT_MEMBERS : "members in"
   TENANTS ||--o{ ROLES : "defines roles"
   TENANTS ||--o{ PERMISSIONS : "defines perms"
   TENANTS ||--o{ TIERS : "defines tiers"
+  TENANTS ||--o{ USER_CONSENTS : "consent context (optional)"
 
   TIERS ||--o{ USER_PROFILE : "default tier"
   TIERS ||--o{ TIER_PERMISSIONS : "tier grants"
@@ -153,6 +180,8 @@ erDiagram
   ROLES ||--o{ USER_ROLES : "assigned to users"
   ROLES ||--o{ ROLE_PERMISSIONS : "role perms"
   PERMISSIONS ||--o{ ROLE_PERMISSIONS : "perms in roles"
+
+  LEGAL_DOCUMENTS ||--o{ USER_CONSENTS : "consented to"
 ```
 
 ---
@@ -242,6 +271,7 @@ erDiagram
   USER_ATTRIBUTE_DEFINITIONS ||--o{ USER_ATTRIBUTES : "has values"
 ```
 
+
 ## 3. Data Dictionary
 
 ### 3.1 auth.users (Supabase)
@@ -252,14 +282,18 @@ Global identity for every user. Authentication, email, password, and high-level 
 **Scope**  
 Global (not tenant-specific). Tenant binding happens via `user_profile` and `tenant_members` / `user_roles`.
 
-| Column (selected) | Type        | Description                                                       |
-| ----------------- | ----------- | ----------------------------------------------------------------- |
-| id                | uuid        | Primary key for the user, referenced by all tenant-scoped tables. |
-| email             | text        | Login email address.                                              |
-| raw_app_meta_data | jsonb       | Includes our `claims` JSON set by claims functions.               |
-| created_at        | timestamptz | When the user record was created.                                 |
+**Consent-related note**  
+From a compliance perspective, we avoid storing detailed consent state in `auth.users`. Instead, consents live in `user_consents`, and `auth.users.raw_app_meta_data` stores only the claims we need for auth/authorisation.
+
+| Column (selected) | Type  | Description |
+| ----------------- | ----- | ----------- |
+| id                | uuid  | Primary key for the user, referenced by all tenant-scoped tables. |
+| email             | text  | Login email address. |
+| raw_app_meta_data | jsonb | Includes our `claims` JSON set by claims functions. |
+| created_at        | timestamptz | When the user record was created. |
 
 > Full structure is maintained by Supabase; we primarily reference `auth.users.id` and `raw_app_meta_data`.
+
 
 ### 3.2 tenants
 
@@ -269,13 +303,14 @@ Represents an **organisation / workspace** in the platform. Tenants own users, p
 **Scope**  
 Tenant-scoped; each row is a tenant.
 
-| Column     | Type        | Description                                                                                  |
-| ---------- | ----------- | -------------------------------------------------------------------------------------------- |
-| id         | uuid        | Primary key for the tenant.                                                                  |
-| name       | text        | Human-readable tenant name (e.g. company name).                                              |
-| created_at | timestamptz | When the tenant was created.                                                                 |
-| slug       | text        | URL-safe identifier for the tenant (used in internal references or vanity URLs).             |
-| tier_id    | uuid        | Optional reference to a default `tiers.id` (e.g. default plan for new users in this tenant). |
+| Column    | Type        | Description |
+| --------- | ----------- | ----------- |
+| id        | uuid        | Primary key for the tenant. |
+| name      | text        | Human-readable tenant name (e.g. company name). |
+| created_at| timestamptz | When the tenant was created. |
+| slug      | text        | URL-safe identifier for the tenant (used in internal references or vanity URLs). |
+| tier_id   | uuid        | Optional reference to a default `tiers.id` (e.g. default plan for new users in this tenant). |
+
 
 ### 3.3 tiers
 
@@ -285,14 +320,15 @@ Defines **pricing plans** (e.g. `free`, `pro`, `enterprise`) for a tenant. These
 **Scope**  
 Tenant-scoped. In practice, system-level tiers can be reused across tenants.
 
-| Column      | Type | Description                                           |
-| ----------- | ---- | ----------------------------------------------------- |
-| id          | uuid | Primary key for the tier.                             |
-| tenant_id   | uuid | Owning tenant. May be `NULL` for global/system tiers. |
-| name        | text | Display name (e.g. “Free”, “Pro”, “Enterprise”).      |
-| description | text | Human-readable description of the plan.               |
-| code        | text | Internal code (e.g. `free`, `pro`, `enterprise`).     |
-| sort_order  | int  | Order for displaying tiers in UI.                     |
+| Column      | Type  | Description |
+| ----------- | ----- | ----------- |
+| id          | uuid  | Primary key for the tier. |
+| tenant_id   | uuid  | Owning tenant. May be `NULL` for global/system tiers. |
+| name        | text  | Display name (e.g. “Free”, “Pro”, “Enterprise”). |
+| description | text  | Human-readable description of the plan. |
+| code        | text  | Internal code (e.g. `free`, `pro`, `enterprise`). |
+| sort_order  | int   | Order for displaying tiers in UI. |
+
 
 ### 3.4 user_profile
 
@@ -302,15 +338,20 @@ Stores **per-tenant user profile** and primary SaaS attributes (tier, tenant, ex
 **Scope**  
 Tenant-scoped, 1:1 with `auth.users.id` in your target architecture (one primary tenant per user for now).
 
-| Column     | Type        | Description                                                         |
-| ---------- | ----------- | ------------------------------------------------------------------- |
-| id         | uuid        | Primary key, FK to `auth.users.id`.                                 |
-| tenant_id  | uuid        | Tenant the profile is attached to.                                  |
-| full_name  | text        | User’s full name, copied from auth metadata on signup.              |
-| attributes | jsonb       | JSON bucket for extra profile attributes (non-critical, non-typed). |
-| tier_id    | uuid        | Current tier/plan of the user within this tenant.                   |
-| created_at | timestamptz | Record creation timestamp.                                          |
-| updated_at | timestamptz | Last update timestamp.                                              |
+**Name fields**  
+We store **first name and last name separately** for better flexibility (personalisation, exports, integrations). A derived `full_name` can be built in the application layer when needed.
+
+| Column      | Type        | Description |
+| ----------- | ----------- | ----------- |
+| id          | uuid        | Primary key, FK to `auth.users.id`. |
+| tenant_id   | uuid        | Tenant the profile is attached to. |
+| first_name  | text        | User’s given name. |
+| last_name   | text        | User’s family name. |
+| attributes  | jsonb       | JSON bucket for extra profile attributes (non-critical, non-typed). |
+| tier_id     | uuid        | Current tier/plan of the user within this tenant. |
+| created_at  | timestamptz | Record creation timestamp. |
+| updated_at  | timestamptz | Last update timestamp. |
+
 
 ### 3.5 tenant_members
 
@@ -320,13 +361,14 @@ Tracks **membership** of a user within a tenant, including simple role labels an
 **Scope**  
 Tenant-scoped. Composite key of (`tenant_id`, `user_id`).
 
-| Column     | Type        | Description                                                   |
-| ---------- | ----------- | ------------------------------------------------------------- |
-| tenant_id  | uuid        | FK to `tenants.id`.                                           |
-| user_id    | uuid        | FK to `auth.users.id`.                                        |
+| Column     | Type        | Description |
+| ---------- | ----------- | ----------- |
+| tenant_id  | uuid        | FK to `tenants.id`. |
+| user_id    | uuid        | FK to `auth.users.id`. |
 | role       | text        | Simple role label within the tenant (e.g. `member`, `admin`). |
-| status     | text        | Membership status: `active`, `invited`, `disabled`, etc.      |
-| created_at | timestamptz | When the membership record was created.                       |
+| status     | text        | Membership status: `active`, `invited`, `disabled`, etc. |
+| created_at | timestamptz | When the membership record was created. |
+
 
 ### 3.6 roles
 
@@ -336,13 +378,14 @@ Defines **named roles** used for RBAC (e.g. `member`, `admin`, `super_admin`). I
 **Scope**  
 Tenant-scoped at DB level, but conceptually **global role catalogue** in this framework.
 
-| Column      | Type        | Description                                        |
-| ----------- | ----------- | -------------------------------------------------- |
-| id          | uuid        | Primary key for the role.                          |
+| Column      | Type        | Description |
+| ----------- | ----------- | ----------- |
+| id          | uuid        | Primary key for the role. |
 | name        | text        | Role name (e.g. `member`, `admin`, `super_admin`). |
-| description | text        | Longer description of the role’s purpose.          |
-| created_at  | timestamptz | Creation timestamp.                                |
-| tenant_id   | uuid        | Owning tenant; may be `NULL` for system roles.     |
+| description | text        | Longer description of the role’s purpose. |
+| created_at  | timestamptz | Creation timestamp. |
+| tenant_id   | uuid        | Owning tenant; may be `NULL` for system roles. |
+
 
 ### 3.7 permissions
 
@@ -352,14 +395,15 @@ Defines **fine-grained capabilities** that can be attached to roles and tiers (e
 **Scope**  
 Tenant-scoped at DB level; conceptually a **global permission catalogue**.
 
-| Column      | Type        | Description                                                                     |
-| ----------- | ----------- | ------------------------------------------------------------------------------- |
-| id          | uuid        | Primary key for the permission.                                                 |
-| name        | text        | Machine-friendly name of the permission.                                        |
-| description | text        | Human-readable description of what this permission allows.                      |
+| Column      | Type        | Description |
+| ----------- | ----------- | ----------- |
+| id          | uuid        | Primary key for the permission. |
+| name        | text        | Machine-friendly name of the permission. |
+| description | text        | Human-readable description of what this permission allows. |
 | module      | text        | Logical module/feature this permission belongs to (e.g. `projects`, `billing`). |
-| created_at  | timestamptz | Creation timestamp.                                                             |
-| tenant_id   | uuid        | Owning tenant; may be `NULL` for system permissions.                            |
+| created_at  | timestamptz | Creation timestamp. |
+| tenant_id   | uuid        | Owning tenant; may be `NULL` for system permissions. |
+
 
 ### 3.8 role_permissions
 
@@ -369,11 +413,12 @@ Join table mapping **roles → permissions**. Defines what each role is allowed 
 **Scope**  
 Tenant-scoped; each row is one “role has permission” link.
 
-| Column        | Type | Description                     |
-| ------------- | ---- | ------------------------------- |
-| role_id       | uuid | FK to `roles.id`.               |
-| permission_id | uuid | FK to `permissions.id`.         |
+| Column        | Type | Description |
+| ------------- | ---- | ----------- |
+| role_id       | uuid | FK to `roles.id`. |
+| permission_id | uuid | FK to `permissions.id`. |
 | tenant_id     | uuid | Tenant context of this mapping. |
+
 
 ### 3.9 user_roles
 
@@ -383,12 +428,13 @@ Assigns **roles to users** within a tenant. Typically this is derived from tiers
 **Scope**  
 Tenant-scoped. Composite PK of (`user_id`, `role_id`, `tenant_id`).
 
-| Column     | Type        | Description                                  |
-| ---------- | ----------- | -------------------------------------------- |
-| user_id    | uuid        | FK to `auth.users.id`.                       |
-| role_id    | uuid        | FK to `roles.id`.                            |
-| created_at | timestamptz | When this role assignment was created.       |
+| Column     | Type        | Description |
+| ---------- | ----------- | ----------- |
+| user_id    | uuid        | FK to `auth.users.id`. |
+| role_id    | uuid        | FK to `roles.id`. |
+| created_at | timestamptz | When this role assignment was created. |
 | tenant_id  | uuid        | Tenant in which the role assignment applies. |
+
 
 ### 3.10 tier_permissions
 
@@ -398,11 +444,12 @@ Maps **tiers → permissions**, so plans define what users can do. This is the c
 **Scope**  
 Tenant-scoped. Each row is one “tier grants permission” link.
 
-| Column        | Type | Description                     |
-| ------------- | ---- | ------------------------------- |
-| tier_id       | uuid | FK to `tiers.id`.               |
-| permission_id | uuid | FK to `permissions.id`.         |
+| Column        | Type | Description |
+| ------------- | ---- | ----------- |
+| tier_id       | uuid | FK to `tiers.id`. |
+| permission_id | uuid | FK to `permissions.id`. |
 | tenant_id     | uuid | Tenant context of this mapping. |
+
 
 ### 3.11 function_groups
 
@@ -412,14 +459,15 @@ Defines **groups of functions** that appear together in navigation (e.g. “Work
 **Scope**  
 Global (no tenant_id).
 
-| Column      | Type        | Description                                  |
-| ----------- | ----------- | -------------------------------------------- |
-| id          | uuid        | Primary key for the function group.          |
-| slug        | text        | Stable identifier for the group.             |
-| name        | text        | Display name in the UI.                      |
+| Column      | Type        | Description |
+| ----------- | ----------- | ----------- |
+| id          | uuid        | Primary key for the function group. |
+| slug        | text        | Stable identifier for the group. |
+| name        | text        | Display name in the UI. |
 | description | text        | Optional description of the group’s purpose. |
-| sort_order  | int         | Order for listing groups in navigation.      |
-| created_at  | timestamptz | Creation timestamp.                          |
+| sort_order  | int         | Order for listing groups in navigation. |
+| created_at  | timestamptz | Creation timestamp. |
+
 
 ### 3.12 functions
 
@@ -429,17 +477,18 @@ Defines **individual functions / app entry points**, typically tied to routes (e
 **Scope**  
 Global (no tenant_id).
 
-| Column      | Type        | Description                                           |
-| ----------- | ----------- | ----------------------------------------------------- |
-| id          | uuid        | Primary key for the function.                         |
-| label       | text        | Display label for the function (e.g. “Dashboard”).    |
-| description | text        | Optional description of the function.                 |
-| route       | text        | Path or route this function links to (e.g. `/home`).  |
-| is_active   | bool        | Whether this function is currently active/visible.    |
-| slug        | text        | Stable identifier (e.g. `dashboard`).                 |
-| group_id    | uuid        | FK to `function_groups.id`.                           |
+| Column      | Type        | Description |
+| ----------- | ----------- | ----------- |
+| id          | uuid        | Primary key for the function. |
+| label       | text        | Display label for the function (e.g. “Dashboard”). |
+| description | text        | Optional description of the function. |
+| route       | text        | Path or route this function links to (e.g. `/home`). |
+| is_active   | bool        | Whether this function is currently active/visible. |
+| slug        | text        | Stable identifier (e.g. `dashboard`). |
+| group_id    | uuid        | FK to `function_groups.id`. |
 | sort_order  | int         | Order in which the function appears within its group. |
-| created_at  | timestamptz | When the function was created.                        |
+| created_at  | timestamptz | When the function was created. |
+
 
 ### 3.13 tier_functions
 
@@ -449,10 +498,11 @@ Join table mapping **tiers → functions**, controlling which navigation items /
 **Scope**  
 Effectively global; tier IDs may be global/system tiers.
 
-| Column      | Type | Description           |
-| ----------- | ---- | --------------------- |
-| tier_id     | uuid | FK to `tiers.id`.     |
-| function_id | uuid | FK to `functions.id`. |
+| Column       | Type | Description |
+| ------------ | ---- | ----------- |
+| tier_id      | uuid | FK to `tiers.id`. |
+| function_id  | uuid | FK to `functions.id`. |
+
 
 ### 3.14 modules
 
@@ -462,15 +512,16 @@ Represents **high-level modules** (feature packs) that can be globally enabled/d
 **Scope**  
 Conceptually global; `tenant_id` can be `NULL` (recommended) to indicate true white-label modules.
 
-| Column      | Type        | Description                                                      |
-| ----------- | ----------- | ---------------------------------------------------------------- |
-| id          | uuid        | Primary key for the module.                                      |
-| key         | text        | Unique key for the module (e.g. `projects`, `crm`).              |
-| label       | text        | Display name for the module.                                     |
-| description | text        | Optional human-readable description.                             |
-| enabled     | bool        | Whether the module is globally enabled.                          |
-| created_at  | timestamptz | When the module was created.                                     |
+| Column      | Type        | Description |
+| ----------- | ----------- | ----------- |
+| id          | uuid        | Primary key for the module. |
+| key         | text        | Unique key for the module (e.g. `projects`, `crm`). |
+| label       | text        | Display name for the module. |
+| description | text        | Optional human-readable description. |
+| enabled     | bool        | Whether the module is globally enabled. |
+| created_at  | timestamptz | When the module was created. |
 | tenant_id   | uuid        | Optional tenant-specific override (discouraged for white-label). |
+
 
 ### 3.15 user_attribute_definitions
 
@@ -480,15 +531,16 @@ Defines the **schema for custom-like user attributes**, centrally managed (not t
 **Scope**  
 Conceptually global. `tenant_id` may be `NULL` to indicate system-level definitions.
 
-| Column     | Type        | Description                                             |
-| ---------- | ----------- | ------------------------------------------------------- |
-| id         | uuid        | Primary key for the attribute definition.               |
-| key        | text        | Unique key (e.g. `job_title`).                          |
-| label      | text        | Display label (e.g. “Job Title”).                       |
-| data_type  | text        | Data type (e.g. `string`, `number`, `boolean`, `enum`). |
-| required   | bool        | Whether this attribute is required.                     |
-| created_at | timestamptz | When the definition was created.                        |
-| tenant_id  | uuid        | Optional tenant-specific override; `NULL` = global.     |
+| Column      | Type        | Description |
+| ----------- | ----------- | ----------- |
+| id          | uuid        | Primary key for the attribute definition. |
+| key         | text        | Unique key (e.g. `job_title`). |
+| label       | text        | Display label (e.g. “Job Title”). |
+| data_type   | text        | Data type (e.g. `string`, `number`, `boolean`, `enum`). |
+| required    | bool        | Whether this attribute is required. |
+| created_at  | timestamptz | When the definition was created. |
+| tenant_id   | uuid        | Optional tenant-specific override; `NULL` = global. |
+
 
 ### 3.16 user_attributes
 
@@ -498,30 +550,91 @@ Stores **actual values** for defined user attributes, referencing `auth.users` a
 **Scope**  
 Tenant-scoped; attributes can vary per tenant if needed.
 
-| Column        | Type        | Description                                     |
-| ------------- | ----------- | ----------------------------------------------- |
-| user_id       | uuid        | FK to `auth.users.id`.                          |
-| attribute_key | text        | FK to `user_attribute_definitions.key`.         |
+| Column        | Type        | Description |
+| ------------- | ----------- | ----------- |
+| user_id       | uuid        | FK to `auth.users.id`. |
+| attribute_key | text        | FK to `user_attribute_definitions.key`. |
 | value         | jsonb       | Actual value for the attribute, stored as JSON. |
-| created_at    | timestamptz | When this value was created.                    |
-| updated_at    | timestamptz | When this value was last updated.               |
-| tenant_id     | uuid        | Tenant context for the attribute value.         |
+| created_at    | timestamptz | When this value was created. |
+| updated_at    | timestamptz | When this value was last updated. |
+| tenant_id     | uuid        | Tenant context for the attribute value. |
+
+
+### 3.17 legal_documents
+
+**Purpose**  
+Defines the **legal or policy documents** a user can consent to, such as Privacy Policy, Terms & Conditions, and Marketing Communications consent text.
+
+**Scope**  
+Global by default. You may optionally support tenant-specific overrides by using `tenant_id` if needed later.
+
+| Column       | Type        | Description |
+| ------------ | ----------- | ----------- |
+| id           | uuid        | Primary key for the legal document. |
+| code         | text        | Stable code, e.g. `privacy_policy`, `terms_of_service`, `marketing_opt_in`. |
+| version      | text        | Version identifier, e.g. `2025-01`, `v1.2`. |
+| title        | text        | Display title (e.g. “Privacy Policy”). |
+| url          | text        | URL where the full text is hosted (e.g. `/legal/privacy`). |
+| published_at | timestamptz | When this version became effective. |
+| is_active    | bool        | Whether this version is currently active. |
+
+This allows you to:
+
+- Track changes to policies over time.
+- Refer to a specific **version** from user consents.
+- Drive the signup screen from data rather than hard-coding legal text.
+
+
+### 3.18 user_consents
+
+**Purpose**  
+Stores **per-user consent records** for each legal document (Privacy, Terms, Marketing, etc.), including **when** the consent was given and **which version** of the document was agreed to.
+
+**Scope**  
+Global with optional tenant context.
+
+Typical consents you will record at registration:
+
+- `privacy_policy` – required.
+- `terms_of_service` – required.
+- `marketing_opt_in` – optional, for marketing communications (email, newsletter, etc.).
+
+| Column       | Type        | Description |
+| ------------ | ----------- | ----------- |
+| id           | uuid        | Primary key for the consent record. |
+| user_id      | uuid        | FK to `auth.users.id`. |
+| tenant_id    | uuid        | Optional FK to `tenants.id` if consent text is tenant-specific. Usually `NULL` for global policies. |
+| document_id  | uuid        | FK to `legal_documents.id` representing the policy or consent text. |
+| version      | text        | Snapshot of the document version at the time of consent (denormalised from `legal_documents.version`). |
+| consented_at | timestamptz | When the user provided this consent (e.g. at signup). |
+| revoked_at   | timestamptz | When the user revoked this consent (e.g. unsubscribed), if ever. |
+
+**Why track version + timestamp?**
+
+- Regulatory clarity (especially in UK/EU): you can prove **which version** of the policy the user accepted and **when**.
+- When you update Privacy Policy or Terms, you can:
+  - Insert a new row in `legal_documents` with a new `version`.
+  - Detect users who have not consented to the new version (no `user_consents` row for that document/version).
+  - Prompt them to re-consent on next login.
+
 
 ## 4. Database Functions
 
-These functions wire Supabase auth, claims, and RBAC together.
+These functions wire Supabase auth, claims, and RBAC together. Consent records are **not** part of JWT claims by default (to keep tokens lean and avoid baking policy into auth).
 
 ### 4.1 public.build_claims(p_user_id uuid) → jsonb
 
 **Purpose**  
 Builds the **claims JSON** for a user, based on roles, tiers, and permissions.
 
-Expected behaviour (from schema):
+Expected behaviour:
 
 - Aggregates user’s roles and permissions via `user_roles`, `role_permissions`, and `permissions`.
+- May also include tier and tenant info from `user_profile`.
 - Returns a JSONB object with at least a `permissions` array and likely other fields (`roles`, `tier`, `tenant_id`).
 
 This JSON is then written into `auth.users.raw_app_meta_data->'claims'` by `apply_claims_to_user`.
+
 
 ### 4.2 public.apply_claims_to_user(p_user_id uuid) → void
 
@@ -536,6 +649,7 @@ Behaviour:
   - After role assignments change for a user.
   - After tier changes or other RBAC-affecting events.
 
+
 ### 4.3 public.apply_claims_to_role_users() → trigger
 
 **Purpose**  
@@ -549,6 +663,7 @@ Behaviour:
 
 Intended to be attached as a trigger on `role_permissions` / `roles`.
 
+
 ### 4.4 public.get_role_permissions(role_id uuid) → TABLE(permission text)
 
 **Purpose**  
@@ -559,6 +674,7 @@ Usage:
 - `SELECT * FROM public.get_role_permissions(<role_id>);`
 - Used internally for diagnostics or when building admin screens.
 
+
 ### 4.5 public.get_user_permissions(user_id uuid) → TABLE(permission text)
 
 **Purpose**  
@@ -568,6 +684,7 @@ Usage:
 
 - `SELECT * FROM public.get_user_permissions(<user_id>);`
 - Reflects the **effective** permissions (post role assignment).
+
 
 ### 4.6 public.user_has_permission(user_id uuid, permission_name text) → boolean
 
@@ -581,20 +698,31 @@ Behaviour:
 
 Useful inside RLS policies or admin diagnostic SQL.
 
+
 ### 4.7 public.on_auth_user_created() → trigger
 
 **Purpose**  
 Bootstrap logic that runs when a new row is inserted into `auth.users` (user signup).
 
-Typical behaviour (from the function body in schema):
+Typical behaviour (to align with this schema):
 
 - Resolves or creates an initial tenant (e.g. “Unassigned Tenant” or similar).
 - Inserts a row into `public.user_profile` with:
   - `id = new.id`
-  - `full_name` from `raw_user_meta_data->>'full_name'`
+  - `first_name`, `last_name` from `raw_user_meta_data` (or initial signup form).
   - `tenant_id` and a default `tier_id` (free tier).
 - Optionally assigns default tier/role mappings (e.g. FREE tier, MEMBER role).
 - Calls `apply_claims_to_user` to initialise JWT claims for the new user.
+
+**Consent capture at signup** (application logic):
+
+- The **frontend** should:
+  - Require checkboxes for **Privacy Policy** and **Terms** (linked to `legal_documents` rows).
+  - Offer an optional checkbox for **Marketing**.
+- After successful signup:
+  - Insert one `user_consents` row for each agreed document/version, using the currently active entries in `legal_documents`.
+  - This ensures `consented_at` and `version` are recorded immediately.
+
 
 ## 5. Views
 
@@ -627,17 +755,18 @@ LEFT JOIN public.tiers tr   ON tr.id = up.tier_id;
 
 **Columns**
 
-| Column      | Type        | Description                                |
-| ----------- | ----------- | ------------------------------------------ |
-| tenant_id   | uuid        | Tenant ID.                                 |
-| tenant_name | text        | Tenant display name.                       |
-| user_id     | uuid        | User ID (auth.users.id).                   |
-| user_email  | text        | User’s email from auth.                    |
-| role_id     | uuid        | Role ID assigned via user_roles.           |
-| role_name   | text        | Role name.                                 |
-| tier_id     | uuid        | User’s current tier from user_profile.     |
-| tier_name   | text        | Tier name.                                 |
+| Column      | Type  | Description |
+| ----------- | ----- | ----------- |
+| tenant_id   | uuid  | Tenant ID. |
+| tenant_name | text  | Tenant display name. |
+| user_id     | uuid  | User ID (auth.users.id). |
+| user_email  | text  | User’s email from auth. |
+| role_id     | uuid  | Role ID assigned via user_roles. |
+| role_name   | text  | Role name. |
+| tier_id     | uuid  | User’s current tier from user_profile. |
+| tier_name   | text  | Tier name. |
 | created_at  | timestamptz | When the user role assignment was created. |
+
 
 ## 6. Why a Data Dictionary Isn’t “Old School”
 
