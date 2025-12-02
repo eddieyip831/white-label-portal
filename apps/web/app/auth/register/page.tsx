@@ -48,6 +48,8 @@ export default function RegisterPage() {
           // New discrete fields
           first_name: firstName.trim(),
           last_name: lastName.trim() || null,
+          // Legal / consent flags
+          accepted_terms_and_privacy: acceptTerms,
           marketing_opt_out: marketingOptOut,
         },
       },
@@ -56,6 +58,7 @@ export default function RegisterPage() {
     setLoading(false);
 
     if (signupError) {
+      console.error('signupError', signupError);
       setError(signupError.message);
     } else {
       setSuccess(true);

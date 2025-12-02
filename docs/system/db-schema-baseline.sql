@@ -150,46 +150,174 @@ ALTER FUNCTION "public"."get_user_permissions"("user_id" "uuid") OWNER TO "postg
 CREATE OR REPLACE FUNCTION "public"."on_auth_user_created"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
-declare
-  v_user_id uuid;
-  v_tenant_id uuid;
-  v_free_tier uuid;
-  v_member_role uuid;
-begin
-  v_user_id := new.id;
+DECLARE
+  v_user_id uuid := NEW.id;
 
-  -- Unassigned Tenant
-  select id into v_tenant_id
-  from public.tenants
-  where name ilike 'unassigned%';
+  v_tenant_id    uuid;
+  v_free_tier    uuid;
+  v_member_role  uuid;
 
-  -- FREE tier
-  select id into v_free_tier
-  from public.tiers
-  where code = 'free';
+  v_first_name text;
+  v_last_name  text;
 
-  -- MEMBER role
-  select id into v_member_role
-  from public.roles
-  where name = 'member';
+  v_accept_terms_and_privacy boolean;
+  v_marketing_opt_out        boolean;
 
-  -- Insert user profile
-  insert into public.user_profile (id, first_name, last_name, tenant_id, tier_id)
-  values (v_user_id, new.raw_user_meta_data->>'full_name', NULL, v_tenant_id, v_free_tier)
-  on conflict (id) do nothing;
+  v_privacy_doc_id    uuid;
+  v_privacy_version   text;
 
-  -- Assign FREE tier
-  insert into public.user_tiers (user_id, tier_id)
-  values (v_user_id, v_free_tier)
-  on conflict do nothing;
+  v_terms_doc_id      uuid;
+  v_terms_version     text;
 
-  -- Assign MEMBER role
-  insert into public.user_roles (user_id, role_id, tenant_id)
-  values (v_user_id, v_member_role, v_tenant_id)
-  on conflict do nothing;
+  v_marketing_doc_id  uuid;
+  v_marketing_version text;
+BEGIN
+  --------------------------------------------------------------------
+  -- 1) Resolve tenant / tier / role from existing tables
+  --------------------------------------------------------------------
+  SELECT id
+  INTO v_tenant_id
+  FROM public.tenants
+  WHERE name ILIKE 'unassigned%'
+  LIMIT 1;
 
-  return new;
-end;
+  SELECT id
+  INTO v_free_tier
+  FROM public.tiers
+  WHERE code = 'free'
+  LIMIT 1;
+
+  SELECT id
+  INTO v_member_role
+  FROM public.roles
+  WHERE name = 'member'
+  LIMIT 1;
+
+  -- If any core config is missing, don't block auth
+  IF v_tenant_id IS NULL OR v_free_tier IS NULL OR v_member_role IS NULL THEN
+    RAISE LOG 'on_auth_user_created: missing tenant/tier/role config for user % (tenant %, tier %, role %)',
+      v_user_id, v_tenant_id, v_free_tier, v_member_role;
+    RETURN NEW;
+  END IF;
+
+  --------------------------------------------------------------------
+  -- 2) Names + consent flags from raw_user_meta_data
+  --------------------------------------------------------------------
+  v_first_name := COALESCE(
+    NEW.raw_user_meta_data->>'first_name',
+    NEW.raw_user_meta_data->>'full_name'
+  );
+  v_last_name := COALESCE(NEW.raw_user_meta_data->>'last_name', '');
+
+  v_accept_terms_and_privacy :=
+    COALESCE((NEW.raw_user_meta_data->>'accepted_terms_and_privacy')::boolean, false);
+
+  v_marketing_opt_out :=
+    COALESCE((NEW.raw_user_meta_data->>'marketing_opt_out')::boolean, false);
+
+  --------------------------------------------------------------------
+  -- 3) user_profile (upsert, never throw)
+  --------------------------------------------------------------------
+  BEGIN
+    INSERT INTO public.user_profile (id, first_name, last_name, tenant_id, tier_id)
+    VALUES (v_user_id, v_first_name, v_last_name, v_tenant_id, v_free_tier)
+    ON CONFLICT (id) DO UPDATE
+      SET first_name = EXCLUDED.first_name,
+          last_name  = EXCLUDED.last_name,
+          tenant_id  = COALESCE(public.user_profile.tenant_id, EXCLUDED.tenant_id),
+          tier_id    = COALESCE(public.user_profile.tier_id, EXCLUDED.tier_id);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE LOG 'on_auth_user_created: user_profile upsert failed for %: %',
+      v_user_id, SQLERRM;
+  END;
+
+  --------------------------------------------------------------------
+  -- 4) user_tiers
+  --------------------------------------------------------------------
+  -- BEGIN
+  --   INSERT INTO public.user_tiers (user_id, tier_id)
+  --   VALUES (v_user_id, v_free_tier)
+  --   ON CONFLICT DO NOTHING;
+  -- EXCEPTION WHEN OTHERS THEN
+  --   RAISE LOG 'on_auth_user_created: user_tiers insert failed for %: %',
+  --     v_user_id, SQLERRM;
+  -- END;
+
+  --------------------------------------------------------------------
+  -- 5) user_roles
+  --------------------------------------------------------------------
+  BEGIN
+    INSERT INTO public.user_roles (user_id, role_id, tenant_id)
+    VALUES (v_user_id, v_member_role, v_tenant_id)
+    ON CONFLICT DO NOTHING;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE LOG 'on_auth_user_created: user_roles insert failed for %: %',
+      v_user_id, SQLERRM;
+  END;
+
+  --------------------------------------------------------------------
+  -- 6) Consents: privacy + terms if accepted
+  --------------------------------------------------------------------
+  IF v_accept_terms_and_privacy THEN
+    BEGIN
+      -- Privacy Policy
+      SELECT id, version
+      INTO v_privacy_doc_id, v_privacy_version
+      FROM public.legal_documents
+      WHERE code = 'privacy_policy'
+        AND is_active
+      ORDER BY published_at DESC
+      LIMIT 1;
+
+      IF v_privacy_doc_id IS NOT NULL THEN
+        INSERT INTO public.user_consents (user_id, tenant_id, document_id, version)
+        VALUES (v_user_id, v_tenant_id, v_privacy_doc_id, v_privacy_version);
+      END IF;
+
+      -- Terms of Service
+      SELECT id, version
+      INTO v_terms_doc_id, v_terms_version
+      FROM public.legal_documents
+      WHERE code = 'terms_of_service'
+        AND is_active
+      ORDER BY published_at DESC
+      LIMIT 1;
+
+      IF v_terms_doc_id IS NOT NULL THEN
+        INSERT INTO public.user_consents (user_id, tenant_id, document_id, version)
+        VALUES (v_user_id, v_tenant_id, v_terms_doc_id, v_terms_version);
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE LOG 'on_auth_user_created: privacy/terms consents failed for %: %',
+        v_user_id, SQLERRM;
+    END;
+  END IF;
+
+  --------------------------------------------------------------------
+  -- 7) Marketing consent – only if user did NOT opt out
+  --------------------------------------------------------------------
+  IF NOT v_marketing_opt_out THEN
+    BEGIN
+      SELECT id, version
+      INTO v_marketing_doc_id, v_marketing_version
+      FROM public.legal_documents
+      WHERE code = 'marketing_communications'
+        AND is_active
+      ORDER BY published_at DESC
+      LIMIT 1;
+
+      IF v_marketing_doc_id IS NOT NULL THEN
+        INSERT INTO public.user_consents (user_id, tenant_id, document_id, version)
+        VALUES (v_user_id, v_tenant_id, v_marketing_doc_id, v_marketing_version);
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE LOG 'on_auth_user_created: marketing consent failed for %: %',
+        v_user_id, SQLERRM;
+    END;
+  END IF;
+
+  RETURN NEW;
+END;
 $$;
 
 
