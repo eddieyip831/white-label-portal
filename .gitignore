@@ -42,4 +42,8 @@ pnpm-debug.log*
 *.tmp
 *.bak
 
+# chat GPT project instructions
 docs/chatgpt-project-instructions.md
+
+# TypeScript build info
+*.tsbuildinfo

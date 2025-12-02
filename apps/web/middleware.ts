@@ -1,5 +1,8 @@
+// apps/web/middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+
+import { logDebug, logInfo } from '~/lib/log';
 
 /**
  * PUBLIC ROUTES — middleware should skip these
@@ -28,24 +31,22 @@ function isPublicPath(pathname: string) {
   if (pathname === '/') return true;
 
   // For other paths, don't let '/' match everything
-  return PUBLIC_PATHS
-    .filter((path) => path !== '/')
-    .some((path) => {
-      // Exact match (/auth/register) or nested (/legal/terms)
-      return pathname === path || pathname.startsWith(`${path}/`);
-    });
+  return PUBLIC_PATHS.filter((path) => path !== '/').some((path) => {
+    // Exact match (/auth/register) or nested (/legal/terms)
+    return pathname === path || pathname.startsWith(`${path}/`);
+  });
 }
 
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
 
-  console.log('🧩 MIDDLEWARE START', pathname);
+  logDebug('middleware', 'start', { pathname });
 
   /**
    * 0. SUPABASE RESET FLOW — allow password recovery links
    */
   if (searchParams.get('type') === 'recovery') {
-    console.log('🔐 Allowing Supabase recovery URL');
+    logInfo('middleware', 'allowing Supabase recovery URL', { pathname });
     return NextResponse.next();
   }
 
@@ -53,7 +54,7 @@ export function middleware(request: NextRequest) {
    * 1. Allow Supabase internal callback endpoints
    */
   if (SUPABASE_AUTH_CALLBACKS.some((prefix) => pathname.startsWith(prefix))) {
-    console.log('🔓 Allowing Supabase callback:', pathname);
+    logInfo('middleware', 'allowing Supabase callback', { pathname });
     return NextResponse.next();
   }
 
@@ -61,7 +62,7 @@ export function middleware(request: NextRequest) {
    * 2. Skip middleware entirely for public routes
    */
   if (isPublicPath(pathname)) {
-    console.log('🚫 Skipping middleware for public path:', pathname);
+    logDebug('middleware', 'skipping public path', { pathname });
     return NextResponse.next();
   }
 
@@ -69,7 +70,10 @@ export function middleware(request: NextRequest) {
    * 3. TEMP: allow all non-public routes through
    * We are not enforcing auth here yet; (app)/layout will handle it.
    */
-  console.log('➡ Allowing non-public path without auth check (temp):', pathname);
+  logDebug('middleware', 'allowing non-public path without auth check (temp)', {
+    pathname,
+  });
+
   return NextResponse.next();
 }
 
@@ -77,14 +81,5 @@ export function middleware(request: NextRequest) {
  * Route matcher
  */
 export const config = {
-  matcher: [
-    /*
-     * This matcher includes ALL routes except:
-     *  - static files
-     *  - images
-     *  - assets
-     *  - _next/*
-     */
-    '/((?!_next/static|_next/image|favicon.ico|images/).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|images/).*)'],
 };
