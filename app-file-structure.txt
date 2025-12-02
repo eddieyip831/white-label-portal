@@ -1,0 +1,76 @@
+apps/web/app
+├── (app)
+│   ├── admin
+│   └── layout.tsx
+├── (auth)
+├── admin
+│   ├── layout.tsx
+│   ├── page.tsx
+│   ├── tenant-members
+│   │   ├── [tenantId]
+│   │   │   └── [userId]
+│   │   │       └── edit
+│   │   │           └── page.tsx
+│   │   ├── actions.ts
+│   │   ├── new
+│   │   │   └── page.tsx
+│   │   └── page.tsx
+│   └── users
+│       ├── [id]
+│       │   └── page.tsx
+│       ├── create
+│       │   └── page.tsx
+│       └── page.tsx
+├── api
+│   ├── admin
+│   ├── admin-api
+│   │   ├── assign-roles
+│   │   │   └── route.ts
+│   │   ├── attributes
+│   │   │   └── route.ts
+│   │   ├── modules
+│   │   │   └── route.ts
+│   │   ├── permissions
+│   │   │   └── route.ts
+│   │   ├── roles
+│   │   │   └── route.ts
+│   │   └── users
+│   │       ├── [user_id]
+│   │       │   └── route.ts
+│   │       └── route.ts
+│   └── health
+│       └── route.ts
+├── auth
+│   ├── forgot-password
+│   │   └── page.tsx
+│   ├── register
+│   │   └── page.tsx
+│   └── reset-password
+│       └── page.tsx
+├── dashboard
+│   ├── layout.tsx
+│   └── page.tsx
+├── error.tsx
+├── global-error.tsx
+├── home
+│   └── page.tsx
+├── layout.tsx
+├── legal
+│   ├── privacy
+│   │   └── page.tsx
+│   └── terms
+│       └── page.tsx
+├── not-found.tsx
+├── page.tsx
+├── public
+├── robots.ts
+├── settings
+│   └── page.tsx
+├── sitemap.xml
+│   └── route.ts
+├── update-password
+│   └── page.tsx
+└── version
+    └── route.ts
+
+38 directories, 36 files

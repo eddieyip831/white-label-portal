@@ -8,10 +8,16 @@ import { cva } from 'class-variance-authority';
 
 import { cn } from '../lib/utils';
 
+/**
+ * FIX:
+ * Add `data-landmark-index={0}` to NavigationMenu.Root
+ * to match Radix client output and avoid hydration mismatch.
+ */
 const NavigationMenu: React.FC<
   React.ComponentPropsWithRef<typeof NavigationMenuPrimitive.Root>
 > = ({ className, children, ...props }) => (
   <NavigationMenuPrimitive.Root
+    data-landmark-index={0} // <-- FIX: ensures SSR + client match
     className={cn(
       'relative z-10 flex max-w-max flex-1 items-center justify-center',
       className,
@@ -22,6 +28,7 @@ const NavigationMenu: React.FC<
     <NavigationMenuViewport />
   </NavigationMenuPrimitive.Root>
 );
+
 NavigationMenu.displayName = NavigationMenuPrimitive.Root.displayName;
 
 const NavigationMenuList: React.FC<

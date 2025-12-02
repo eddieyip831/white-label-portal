@@ -1,29 +1,23 @@
 {
-  "extends": "@kit/tsconfig/base.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "~/*": ["./app/*"],
-      "~/config/*": ["./config/*"],
-      "~/components/*": ["./components/*"],
-      "~/lib/*": ["./lib/*"]
+      "~/app/*": ["app/*"],
+      "~/components/*": ["components/*"],
+      "~/lib/*": ["lib/*"],
+      "~/config/*": ["config/*"],
+      "~/modules/*": ["modules/*"],
+      "~/styles/*": ["styles/*"]
     },
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "tsBuildInfoFile": "node_modules/.cache/tsbuildinfo.json"
+    "plugins": [{ "name": "next" }]
   },
   "include": [
-    "next-env.d.ts",
-    ".next/types/**/*.ts",
-    "*.ts",
-    "*.tsx",
-    "./config/**/*.ts",
-    "components/**/*",
-    "lib/**/*.ts",
-    "app"
-  ],
-  "exclude": ["node_modules", ".next"]
+    "app",
+    "components",
+    "modules",
+    "lib",
+    "types",
+    ".next/types/**/*.ts"
+  ]
 }

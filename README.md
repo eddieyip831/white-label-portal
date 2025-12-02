@@ -1,343 +1,254 @@
-![Makerkit - Next.js Supabase SaaS Starter Kit \[Lite version\]](apps/web/public/images/makerkit.webp)
+# Base Framework Portal
 
-# NEW! Next.js Supabase SaaS Starter Kit (Lite)
+Base Framework is a **white‑label, multi‑tenant SaaS foundation** built on **Next.js + Supabase**.  
+It is designed to host multiple future products as **modules** with:
 
-Start building your SaaS faster with our Next.js 15 + Supabase starter kit.
+- Self‑service onboarding
+- Tier‑driven roles & permissions
+- Strong security using **Supabase RLS + JWT claims**
+- Minimal BAU admin work
+- PWA‑first UX
 
-👉 **Looking for a full-featured SaaS Starter Kit?** [Check out the complete version](https://makerkit.dev)
+This repo is the **platform skeleton**, not a single app. New business ideas should be implemented as modules that plug into this foundation.
 
-⭐️ **Why Developers Trust Makerkit:**
-- Production-grade architecture decisions
-- Comprehensive TypeScript setup
-- Modern stack: Next.js 15, Supabase, TailwindCSS v4
-- Quality Code tooling: ESLint v9, Prettier, strict TypeScript, etc.
-- Regular updates and active maintenance
+---
 
-PS: the documentation for this kit is still being updated, so please check back later for more details.
+## 1. Core Concepts
 
-## What's Included
+### Multi‑tenant, self‑service SaaS
 
-### Core Architecture
-- 🏗️ Next.js 15 + Turborepo monorepo setup
-- 🎨 Shadcn UI components with TailwindCSS v4
-- 🔐 Supabase authentication & basic DB
-- 🌐 i18n translations (client + server)
-- ✨ Full TypeScript + ESLint v9 + Prettier configuration
+- **Tenants** represent organisations (plus a special “Unassigned Tenant” for self‑sign‑ups).
+- **Tiers** (`free`, `pro`, `enterprise`) drive monetisation and access.
+- **Roles** (`member`, `admin`, `super_admin`) are **system‑defined**, not tenant‑editable.
+- Users **self‑register**, pick a tier (or default to `free`), and receive roles/permissions automatically.
+- A small **admin console** exists for exceptional overrides and audit only.
 
-### Key Features
-- 👤 User authentication flow
-- ⚙️ User profile & settings
-- 📱 Responsive marketing pages
-- 🔒 Protected routes
-- 🎯 Basic test setup with Playwright
+### Modules first
 
-### Technologies
+Every new feature area should be a **module** that defines:
 
-This starter kit provides core foundations:
+- Its own data model (tables + RLS)
+- Any Edge Functions / API endpoints
+- Next.js routes (pages, layouts)
+- Admin oversight pages (under `/admin`)
+- Permissions & navigation entries
 
-🛠️ **Technology Stack**:
-- [Next.js 15](https://nextjs.org/): A React-based framework for server-side rendering and static site generation.
-- [Tailwind CSS](https://tailwindcss.com/): A utility-first CSS framework for rapidly building custom designs.
-- [Supabase](https://supabase.com/): A realtime database for web and mobile applications.
-- [i18next](https://www.i18next.com/): A popular internationalization framework for JavaScript.
-- [Turborepo](https://turborepo.org/): A monorepo tool for managing multiple packages and applications.
-- [Shadcn UI](https://shadcn.com/): A collection of components built using Tailwind CSS.
-- [Zod](https://github.com/colinhacks/zod): A TypeScript-first schema validation library.
-- [React Query](https://tanstack.com/query/v4): A powerful data fetching and caching library for React.
-- [Prettier](https://prettier.io/): An opinionated code formatter for JavaScript, TypeScript, and CSS.
-- [Eslint](https://eslint.org/): A powerful linting tool for JavaScript and TypeScript.
-- [Playwright](https://playwright.dev/): A framework for end-to-end testing of web applications.
+Modules are **globally activatable** (via `modules` + permissions), not customised per tenant.
 
-This kit is a trimmed down version of the [full version of this SaaS Starter Kit](https://makerkit.dev). It is a good way to evaluate small part of the full kit, or to simply use it as a base for your own project.
+### Tier‑driven RBAC
 
-## Comparing Lite vs Full Version
+- Permissions are globally defined and mapped to **tiers** and **roles**.
+- Tiers → permissions → roles → users
+- Supabase JWT **claims** include `tenant_id`, `tier`, `roles`, and `permissions` for RLS.
 
-The lite kit is perfect for:
-- Evaluating our code architecture and patterns
-- Building basic SaaS prototypes
-- Learning our tech stack approach
-- Building a basic SaaS tool
+See `docs/system/db-schema-reference.md` for full details of the RBAC model and claims functions.
 
-The [full version](https://makerkit.dev) adds production features:
-- 💳 Complete billing and subscription system
-- 👥 Team accounts and management
-- 📧 Mailers and Email Templates (Nodemailer, Resend, etc.)
-- 📊 Analytics (GA, Posthog, Umami, etc.)
-- 🔦 Monitoring providers (Sentry, Baselime, etc.)
-- 🔐 Production database schema
-- ✅ Comprehensive test suite
-- 🔔 Realtime Notifications
-- 📝 Blogging system
-- 💡 Documentation system
-- ‍💻 Super Admin panel
-- 🕒 Daily updates and improvements
-- 🐛 Priority bug fixes
-- 🤝 Support
-- ⭐️ Used by 1000+ developers
-- 💪 Active community members
-- 🏢 Powers startups to enterprises
+---
 
-[View complete feature comparison →](https://makerkit.dev/#pricing)
+## 2. Tech Stack
 
-## Getting Started
+### Backend / Platform
 
-### Prerequisites
+- **Supabase** (Postgres + Auth + RLS)
+- Supabase functions for:
+  - Building JWT claims (`build_claims`)
+  - Applying claims to users (`apply_claims_to_user`)
+  - Auto‑bootstrapping `user_profile` on signup
+- RLS Everywhere: access is enforced in the database, not just in the UI.
 
-- Node.js 18.x or later (preferably the latest LTS version)
-- Docker
-- PNPM
+### Frontend
 
-Please make sure you have a Docker daemon running on your machine. This is required for the Supabase CLI to work.
+- **Next.js 15** (App Router)
+- **TypeScript**
+- **Tailwind CSS**
+- PWA‑first (service worker, offline‑aware UX)
+- MakerKit‑style structure with path aliases.
 
-### Installation
+### Admin
 
-#### 1. Clone this repository
+- Lives under: `apps/web/app/(app)/admin`
+- Provides:
+  - Tenant and user overview
+  - Role/tier inspection
+  - Rare super‑admin overrides
 
-```bash
-git clone https://github.com/makerkit/next-supabase-saas-kit-lite.git
+---
+
+## 3. Repository Layout (High‑Level)
+
+At the monorepo root (assumed: `portal/`):
+
+```text
+portal/
+  apps/
+    web/
+      app/
+        (app)/          # Authenticated app shell
+        (auth)/         # Auth flows
+        admin/          # Admin area (within (app))
+        ...             # Other route groups & pages
+      components/       # Shared UI components
+      lib/              # Shared libraries (auth, supabase, utils)
+      styles/
+  docs/
+    system/
+      db-schema-baseline.sql      # Baseline DB dump
+      db-schema-reference.md      # ER + data dictionary + functions/views
+      chatgpt-project-instructions.md
+      file-tree-baseline.txt      # Baseline file tree snapshot
+      file-tree-current.txt       # Generated for validation
+  scripts/
+    validate-file-tree.sh         # Checks file tree vs baseline
 ```
 
-#### 2. Install dependencies
+> Any paths with parentheses (e.g. `apps/web/app/(app)`) must be quoted in zsh commands, e.g. `"apps/web/app/(app)"`.
 
-```bash
+### Path aliases
+
+In the web app, use the MakerKit‑style aliases consistently:
+
+- `~/app/*` → `apps/web/app/*`
+- `~/components/*` → `apps/web/components/*`
+- `~/lib/*` → `apps/web/lib/*`
+- `~/modules/*` → `apps/web/modules/*`
+- `~/styles/*` → `apps/web/styles/*`
+- `@/*` → `apps/web/*`
+
+Avoid `@supabase/auth-helpers-*`; use the existing MakerKit hooks and helpers instead.
+
+---
+
+## 4. Getting Started
+
+### 4.1 Prerequisites
+
+- Node.js (LTS)
+- `pnpm` (preferred package manager)
+- Supabase CLI
+- Docker Desktop (for local Postgres/Supabase if running locally)
+
+### 4.2 Setup
+
+From the monorepo root (`portal/`):
+
+```zsh
+# Install dependencies
 pnpm install
+
+# Start Supabase locally (if using local stack)
+supabase start
+
+# Apply migrations & seed (adjust as needed)
+supabase db reset
+
+# Generate TypeScript types from the database
+supabase gen types typescript   --project-id <project-id>   > apps/web/lib/supabase/database.types.ts
 ```
 
-#### 3. Start Supabase
+Set up environment variables (`.env.local`, `.env`) for:
 
-Please make sure you have a Docker daemon running on your machine.
+- Supabase URL and anon/service keys
+- Any Next.js app settings (e.g. NEXT_PUBLIC_SITE_URL)
 
-Then run the following command to start Supabase:
+Then run the web app:
 
-```bash
-pnpm run supabase:web:start
+```zsh
+pnpm dev --filter web
 ```
 
-Once the Supabase server is running, please access the Supabase Dashboard using the port in the output of the previous command. Normally, you find it at [http://localhost:54323](http://localhost:54323).
+The app should be available at `http://localhost:3000`.
 
-You will also find all the Supabase services printed in the terminal after the command is executed.
+---
 
-##### Stopping Supabase
+## 5. Database & RLS
 
-To stop the Supabase server, run the following command:
+The database is managed via Supabase migrations and documented in:
 
-```bash
-pnpm run supabase:web:stop
+- `docs/system/db-schema-baseline.sql` – baseline schema.
+- `docs/system/db-schema-reference.md` – ER diagrams, data dictionary, functions, views.
+
+Key tables:
+
+- Core tenancy: `tenants`, `tiers`, `user_profile`, `tenant_members`
+- RBAC: `roles`, `permissions`, `role_permissions`, `user_roles`, `tier_permissions`
+- Navigation: `function_groups`, `functions`, `tier_functions`
+- Modules: `modules`
+- User metadata: `user_attribute_definitions`, `user_attributes`
+
+Key functions:
+
+- `public.build_claims(user_id uuid) → jsonb`
+- `public.apply_claims_to_user(user_id uuid) → void`
+- `public.get_user_permissions(user_id uuid)`
+- `public.user_has_permission(user_id uuid, permission_name text) → boolean`
+- `public.on_auth_user_created()` (trigger for `auth.users`)
+
+Views:
+
+- `public.tenant_members_admin` – denormalised view for admin consoles.
+
+UUIDs are generated using:
+
+```sql
+id uuid DEFAULT gen_random_uuid() PRIMARY KEY
 ```
 
-##### Resetting Supabase
+No manual sequences are required for UUIDs.
 
-To reset the Supabase server, run the following command:
+---
 
-```bash
-pnpm run supabase:web:reset
-```
+## 6. Development Conventions
 
-##### More Supabase Commands
+- **RLS first, UI second**  
+  - All queries must respect tenant scoping (`tenant_id = auth.jwt().tenant_id` where applicable).
+  - UI should never rely solely on client‑side checks for security.
 
-For more Supabase commands, see the [Supabase CLI documentation](https://supabase.com/docs/guides/cli).
+- **Route groups**  
+  - `(app)` – authenticated shell (requires logged‑in user).
+  - `(auth)` – login/register/forgot/reset flows.
+  - Public routes (marketing, legal) live outside `(app)`.
 
-```
-# Create new migration
-pnpm --filter web supabase migration new <name>
+- **Admin area**  
+  - All routes under `apps/web/app/(app)/admin` must be protected by server‑side guards (e.g. `requireRole('admin' | 'super_admin')`).
+  - Use the shared admin layout/sidebar for all admin pages.
 
-# Link to Supabase project
-pnpm --filter web supabase link
+- **Modules**  
+  - New product areas should go under `~/modules/<module-name>` for code, plus matching DB objects and entries in `modules`, `permissions`, `functions`, and `tier_functions`.
+  - Avoid tenant‑specific customisation; configuration should be **global**, with tiers driving variation.
 
-# Push migrations
-pnpm --filter web supabase db push
-```
+- **File tree discipline**  
+  - Use `bash scripts/validate-file-tree.sh` to compare the current tree against `docs/system/file-tree-baseline.txt`.
+  - Only update `file-tree-baseline.txt` when structural changes are intentional and stable.
 
-#### 4. Start the Next.js application
+---
 
-```bash
-pnpm run dev
-```
+## 7. Documentation
 
-The application will be available at http://localhost:3000.
+Core system docs live under `docs/system/`:
 
-#### 5. Code Health (linting, formatting, etc.)
+- `db-schema-reference.md` – **authoritative DB reference** (ER + data dictionary + functions/views).
+- `chatgpt-project-instructions.md` – instructions for the ChatGPT architectural assistant.
+- `file-tree-baseline.txt` – canonical file structure for validation.
 
-To format your code, run the following command:
+You can render the Mermaid diagrams either:
 
-```bash
-pnpm run format:fix
-```
+- In VS Code using **Markdown Preview Mermaid Support**, or
+- On GitHub (Mermaid support is built‑in), or
+- Via any Markdown+Mermaid‑aware viewer in your browser.
 
-To lint your code, run the following command:
+---
 
-```bash
-pnpm run lint
-```
+## 8. Roadmap (High‑Level)
 
-To validate your TypeScript code, run the following command:
+- Flesh out the **first real module** (e.g. Projects / CRM) using the module conventions.
+- Implement PWA features (offline support, install prompts) as defaults.
+- Add more admin views for:
+  - Tier/role/permission mapping inspection
+  - Module activation and feature flags
+- Harden RLS policies and add test fixtures for critical tables.
 
-```bash
-pnpm run typecheck
-```
+---
 
-Turborepo will cache the results of these commands, so you can run them as many times as you want without any performance impact.
+## 9. License
 
-## Project Structure
-
-The project is organized into the following folders:
-
-```
-apps/
-├── web/                  # Next.js application
-│   ├── app/             # App Router pages
-│   │   ├── (marketing)/ # Public marketing pages
-│   │   ├── auth/        # Authentication pages
-│   │   └── home/        # Protected app pages
-│   ├── supabase/        # Database & migrations
-│   └── config/          # App configuration
-│
-packages/
-├── ui/                  # Shared UI components
-└── features/           # Core feature packages
-    ├── auth/           # Authentication logic
-    └── ...
-```
-
-For more information about this project structure, see the article [Next.js App Router: Project Structure](https://makerkit.dev/blog/tutorials/nextjs-app-router-project-structure).
-
-### Environment Variables
-
-You can configure the application by setting environment variables in the `.env.local` file.
-
-Here are the available variables:
-
-| Variable Name | Description | Default Value |
-| --- | --- | --- |
-| `NEXT_PUBLIC_SITE_URL` | The URL of your SaaS application | `http://localhost:3000` |
-| `NEXT_PUBLIC_PRODUCT_NAME` | The name of your SaaS product | `Makerkit` |
-| `NEXT_PUBLIC_SITE_TITLE` | The title of your SaaS product | `Makerkit - The easiest way to build and manage your SaaS` |
-| `NEXT_PUBLIC_SITE_DESCRIPTION` | The description of your SaaS product | `Makerkit is the easiest way to build and manage your SaaS. It provides you with the tools you need to build your SaaS, without the hassle of building it from scratch.` |
-| `NEXT_PUBLIC_DEFAULT_THEME_MODE` | The default theme mode of your SaaS product | `light` |
-| `NEXT_PUBLIC_THEME_COLOR` | The default theme color of your SaaS product | `#ffffff` |
-| `NEXT_PUBLIC_THEME_COLOR_DARK` | The default theme color of your SaaS product in dark mode | `#0a0a0a` |
-| `NEXT_PUBLIC_SUPABASE_URL` | The URL of your Supabase project | `http://127.0.0.1:54321` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | The anon key of your Supabase project | ''
-| `SUPABASE_SERVICE_ROLE_KEY` | The service role key of your Supabase project | ''
-
-## Architecture
-
-This starter kit uses a monorepo architecture.
-
-1. The `apps/web` directory is the Next.js application.
-2. The `packages` directory contains all the packages used by the application.
-3. The `packages/features` directory contains all the features of the application.
-4. The `packages/ui` directory contains all the UI components.
-
-For more information about the architecture, please refer to the [Makerkit blog post about Next.js Project Structure](https://makerkit.dev/blog/tutorials/nextjs-app-router-project-structure).
-
-### Marketing Pages
-
-Marketing pages are located in the `apps/web/app/(marketing)` directory. These pages are used to showcase the features of the SaaS and provide information about the product.
-
-### Authentication
-
-Authenticated is backed by Supabase. The `apps/web/app/auth` directory contains the authentication pages, however, the logic is into its own package `@kit/auth` located in `packages/features/auth`.
-
-This package can be used across multiple applications.
-
-### Gated Pages
-
-Gated pages are located in the `apps/web/app/home` directory. Here is where you can build your SaaS pages that are gated by authentication.
-
-### Database
-
-The Supabase database is located in the `apps/web/supabase` directory. In this directory you will find the database schema, migrations, and seed data.
-
-#### Creating a new migration
-To create a new migration, run the following command:
-
-```bash
-pnpm --filter web supabase migration new --name <migration-name>
-```
-
-This command will create a new migration file in the `apps/web/supabase/migrations` directory. 
-
-#### Applying a migration
-
-Once you have created a migration, you can apply it to the database by running the following command:
-
-```bash
-pnpm run supabase:web:reset
-```
-
-This command will apply the migration to the database and update the schema. It will also reset the database using the provided seed data.
-
-#### Linking the Supabase database
-
-Linking the local Supabase database to the Supabase project is done by running the following command:
-
-```bash
-pnpm --filter web supabase db link
-```
-
-This command will link the local Supabase database to the Supabase project.
-
-#### Pushing the migration to the Supabase project
-
-After you have made changes to the migration, you can push the migration to the Supabase project by running the following command:
-
-```bash
-pnpm --filter web supabase db push
-```
-
-This command will push the migration to the Supabase project. You can now apply the migration to the Supabase database.
-
-## Going to Production
-
-#### 1. Create a Supabase project
-
-To deploy your application to production, you will need to create a Supabase project.
-
-#### 2. Push the migration to the Supabase project
-
-After you have made changes to the migration, you can push the migration to the Supabase project by running the following command:
-
-```bash
-pnpm --filter web supabase db push
-```
-
-This command will push the migration to the Supabase project.
-
-#### 3. Set the Supabase Callback URL
-
-When working with a remote Supabase project, you will need to set the Supabase Callback URL.
-
-Please set the callback URL in the Supabase project settings to the following URL:
-
-`<url>/auth/callback`
-
-Where `<url>` is the URL of your application.
-
-#### 4. Deploy to Vercel or any other hosting provider
-
-You can deploy your application to any hosting provider that supports Next.js.
-
-#### 5. Deploy to Cloudflare
-
-The configuration should work as is, but you need to set the runtime to `edge` in the root layout file (`apps/web/app/layout.tsx`).
-
-```tsx
-export const runtime = 'edge';
-```
-
-Remember to enable Node.js compatibility in the Cloudflare dashboard.
-
-## Contributing
-
-Contributions for bug fixed are welcome! However, please open an issue first to discuss your ideas before making a pull request.
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
-
-## Support
-
-No support is provided for this kit. Feel free to open an issue if you have any questions or need help, but there is no guaranteed response time, nor guarantee a fix.
-
-For dedicated support, priority fixes, and advanced features, [check out our full version](https://makerkit.dev).
+TBD – choose and document the license appropriate for this project.

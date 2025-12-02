@@ -1,0 +1,137 @@
+📦 Preparing portal snapshot...
+Transfer starting: 54 files
+./
+error.tsx
+global-error.tsx
+layout.tsx
+not-found.tsx
+page.tsx
+robots.ts
+(app)/
+(app)/admin/
+(auth)/
+admin/
+admin/layout.tsx
+admin/page.tsx
+api/
+api/admin-api/
+api/admin-api/assign-roles/
+api/admin-api/assign-roles/route.ts
+api/admin-api/attributes/
+api/admin-api/attributes/route.ts
+api/admin-api/modules/
+api/admin-api/modules/route.ts
+api/admin-api/permissions/
+api/admin-api/permissions/route.ts
+api/admin-api/roles/
+api/admin-api/roles/route.ts
+api/admin-api/users/
+api/admin-api/users/route.ts
+api/admin/
+api/health/
+api/health/route.ts
+auth/
+auth/forgot-password/
+auth/forgot-password/page.tsx
+auth/register/
+auth/register/page.tsx
+auth/reset-password/
+auth/reset-password/page.tsx
+dashboard/
+dashboard/layout.tsx
+dashboard/page.tsx
+legal/
+legal/privacy/
+legal/privacy/page.tsx
+legal/terms/
+legal/terms/page.tsx
+public/
+settings/
+settings/page.tsx
+sitemap.xml/
+sitemap.xml/route.ts
+update-password/
+update-password/page.tsx
+version/
+version/route.ts
+
+sent 32954 bytes  received 760 bytes  4162222 bytes/sec
+total size is 29315  speedup is 0.87
+Transfer starting: 26 files
+./
+database.types.ts
+fonts.ts
+root-metdata.ts
+admin/
+admin/users.ts
+auth/
+auth/claims.ts
+auth/guards.ts
+i18n/
+i18n/i18n.resolver.ts
+i18n/i18n.server.ts
+i18n/i18n.settings.ts
+i18n/with-i18n.tsx
+rbac/
+rbac/attributes.ts
+rbac/modules.ts
+rbac/permissions.ts
+rbac/roles.ts
+server/
+server/require-user-in-server-component.ts
+supabase/
+supabase/client.ts
+supabase/server.ts
+validators/
+validators/password.ts
+
+sent 26404 bytes  received 464 bytes  6553170 bytes/sec
+total size is 24461  speedup is 0.91
+Transfer starting: 32 files
+./
+FallbackError.tsx
+RootLayoutContent.tsx
+app-logo.tsx
+auth-provider.tsx
+personal-account-dropdown-container.tsx
+react-query-provider.tsx
+root-providers.tsx
+useClaims.ts
+admin/
+admin/sidebar.tsx
+admin/attributes/
+admin/attributes/attributes-list.tsx
+admin/modules/
+admin/modules/modules-list.tsx
+admin/permissions/
+admin/permissions/permissions-list.tsx
+admin/roles/
+admin/roles/roles-list.tsx
+admin/users/
+admin/users/users-list.tsx
+auth/
+auth/PasswordStrength.tsx
+layout/
+layout/AdminShell.tsx
+layout/AppHeader.tsx
+layout/AppShell.tsx
+layout/UserShell.tsx
+public/
+public/PublicHeader.tsx
+ui/
+ui/Button.tsx
+
+sent 20594 bytes  received 548 bytes  5156585 bytes/sec
+total size is 18147  speedup is 0.86
+Transfer starting: 5 files
+./
+users/
+users/pages/
+users/pages/list/
+users/pages/list/page.tsx
+
+sent 579 bytes  received 66 bytes  586363 bytes/sec
+total size is 277  speedup is 0.43
+⚠️ Skipped: apps/web/admin does not exist
+✅ Portal snapshot created: portal_snapshot.zip
+Upload this zip in ChatGPT.

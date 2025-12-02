@@ -1,0 +1,361 @@
+===================================================================
+ SHELL SCRIPTS AUDIT
+ Generated: 2025-12-02 12:15:54
+ Repo root: /Users/eddie/baseframework/portal
+===================================================================
+
+Total .sh files: 33
+
+-------------------------------------------------------------------
+File: scripts/archive-legacy-shell-scripts.sh
+  Executable : no
+  Size       : 1643 bytes
+  Modified   : 2025-12-02 12:15:34
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:4:# Run this from repo root: bash scripts/archive-legacy-shell-scripts.sh
+
+-------------------------------------------------------------------
+File: scripts/audit-shell-scripts.sh
+  Executable : no
+  Size       : 4156 bytes
+  Modified   : 2025-12-02 11:08:28
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:63:echo "     - scripts/audit-shell-scripts.sh"
+    - ./scripts/audit-shell-scripts.sh:18:# This script is expected to live in: <repo-root>/scripts/audit-shell-scripts.sh
+
+-------------------------------------------------------------------
+File: scripts/validate-file-tree.sh
+  Executable : yes
+  Size       : 927 bytes
+  Modified   : 2025-12-02 10:02:58
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./docs/chatgpt-project-instructions.md:161:- Validation script: `bash scripts/validate-file-tree.sh`
+    - ./docs/chatgpt-project-instructions.md:167:3. After changes, re‑run `bash scripts/validate-file-tree.sh` and update `file-tree-baseline.txt` **only when the new structure is stable and intentional**.
+    - ./docs/system/file-tree-baseline.md:90:bash scripts/validate-file-tree.sh
+    - ./scripts/archive-legacy-shell-scripts.sh:62:echo "     - scripts/validate-file-tree.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/a.sh
+  Executable : no
+  Size       : 3078 bytes
+  Modified   : 2025-12-02 09:50:38
+  First line : #!/bin/bash
+  Referenced : yes
+  Reference sample:
+    - ./tooling/legacy-shell-scripts/fix-supabase-clients.sh:76:if [ -f "$ROOT/verify-phase2a.sh" ]; then
+    - ./tooling/legacy-shell-scripts/fix-supabase-clients.sh:77:  bash "$ROOT/verify-phase2a.sh" || true
+    - ./tooling/legacy-shell-scripts/fix-supabase-clients.sh:79:  echo "⚠️ verify-phase2a.sh not found — skipping."
+    - ./scripts/archive-legacy-shell-scripts.sh:15:  "a.sh"
+    - ./scripts/archive-legacy-shell-scripts.sh:41:  "verify-phase2a.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/cleanup-admin-duplicate.sh
+  Executable : no
+  Size       : 1113 bytes
+  Modified   : 2025-11-27 09:20:07
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:16:  "cleanup-admin-duplicate.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/diagnose-portal.sh
+  Executable : no
+  Size       : 895 bytes
+  Modified   : 2025-11-18 09:59:47
+  First line : #!/bin/bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:17:  "diagnose-portal.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/extract_portal_snapshot.sh
+  Executable : no
+  Size       : 1658 bytes
+  Modified   : 2025-11-25 14:44:27
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./tooling/legacy-shell-scripts/extract_portal_snapshot.sh:7:    echo "Run using: bash extract_portal_snapshot.sh"
+    - ./scripts/archive-legacy-shell-scripts.sh:18:  "extract_portal_snapshot.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/fetch-supabase-types.sh
+  Executable : no
+  Size       : 3880 bytes
+  Modified   : 2025-11-22 10:34:47
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:19:  "fetch-supabase-types.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/find-sidebar.sh
+  Executable : yes
+  Size       : 384 bytes
+  Modified   : 2025-11-20 14:49:22
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:20:  "find-sidebar.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/find-supabase-config.sh
+  Executable : no
+  Size       : 1229 bytes
+  Modified   : 2025-11-19 16:48:03
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:21:  "find-supabase-config.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/fix-admin-api-conflict.sh
+  Executable : no
+  Size       : 704 bytes
+  Modified   : 2025-11-22 12:36:51
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:22:  "fix-admin-api-conflict.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/fix-admin-route-structure.sh
+  Executable : no
+  Size       : 1887 bytes
+  Modified   : 2025-11-20 14:57:11
+  First line : #!/bin/bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:23:  "fix-admin-route-structure.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/fix-admin-sidebar-precise.sh
+  Executable : yes
+  Size       : 1101 bytes
+  Modified   : 2025-11-20 14:45:36
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:24:  "fix-admin-sidebar-precise.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/fix-admin.sh
+  Executable : no
+  Size       : 1727 bytes
+  Modified   : 2025-11-19 11:48:42
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:25:  "fix-admin.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/fix-imports-option-b.sh
+  Executable : no
+  Size       : 2652 bytes
+  Modified   : 2025-11-24 11:32:11
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:26:  "fix-imports-option-b.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/fix-next-runtime.sh
+  Executable : no
+  Size       : 972 bytes
+  Modified   : 2025-11-22 13:59:22
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:27:  "fix-next-runtime.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/fix-portal-structure.sh
+  Executable : no
+  Size       : 2703 bytes
+  Modified   : 2025-11-24 11:20:57
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./tooling/legacy-shell-scripts/fix-portal-structure.sh:10:  echo "Please run using:  bash fix-portal-structure.sh"
+    - ./scripts/archive-legacy-shell-scripts.sh:28:  "fix-portal-structure.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/fix-rbac-pages.sh
+  Executable : no
+  Size       : 1066 bytes
+  Modified   : 2025-11-22 12:46:04
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:29:  "fix-rbac-pages.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/fix-supabase-clients.sh
+  Executable : no
+  Size       : 2295 bytes
+  Modified   : 2025-11-19 11:40:20
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./docs/system/shell-scripts-audit.txt:51:    - ./tooling/legacy-shell-scripts/fix-supabase-clients.sh:76:if [ -f "$ROOT/verify-phase2a.sh" ]; then
+    - ./docs/system/shell-scripts-audit.txt:52:    - ./tooling/legacy-shell-scripts/fix-supabase-clients.sh:77:  bash "$ROOT/verify-phase2a.sh" || true
+    - ./docs/system/shell-scripts-audit.txt:53:    - ./tooling/legacy-shell-scripts/fix-supabase-clients.sh:79:  echo "⚠️ verify-phase2a.sh not found — skipping."
+    - ./scripts/archive-legacy-shell-scripts.sh:30:  "fix-supabase-clients.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/hard-reset-next.sh
+  Executable : yes
+  Size       : 957 bytes
+  Modified   : 2025-11-20 12:08:00
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:31:  "hard-reset-next.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/package-rbac.sh
+  Executable : no
+  Size       : 1350 bytes
+  Modified   : 2025-11-22 13:08:03
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:32:  "package-rbac.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/phase2-bootstrap.sh
+  Executable : no
+  Size       : 7288 bytes
+  Modified   : 2025-11-18 10:41:44
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./tooling/legacy-shell-scripts/phase2-bootstrap.sh:11:  echo "Run:  bash phase2-bootstrap.sh"
+    - ./tooling/legacy-shell-scripts/phase2-bootstrap.sh:17:  echo "Run:  bash phase2-bootstrap.sh"
+    - ./scripts/archive-legacy-shell-scripts.sh:33:  "phase2-bootstrap.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/phase2b-bootstrap.sh
+  Executable : no
+  Size       : 6488 bytes
+  Modified   : 2025-11-19 16:49:08
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:34:  "phase2b-bootstrap.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/phase3-rbac-bootstrap.sh
+  Executable : no
+  Size       : 4809 bytes
+  Modified   : 2025-11-20 16:07:14
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:35:  "phase3-rbac-bootstrap.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/phase4-rbac-bootstrap.sh
+  Executable : no
+  Size       : 6137 bytes
+  Modified   : 2025-11-22 13:13:57
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:36:  "phase4-rbac-bootstrap.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/reset-web.sh
+  Executable : no
+  Size       : 2470 bytes
+  Modified   : 2025-11-19 14:36:34
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:37:  "reset-web.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/scaffold-framework-structure.sh
+  Executable : no
+  Size       : 8592 bytes
+  Modified   : 2025-11-24 12:55:30
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./tooling/legacy-shell-scripts/scaffold-framework-structure.sh:12:  echo "Usage: bash scaffold-framework-structure.sh"
+    - ./scripts/archive-legacy-shell-scripts.sh:38:  "scaffold-framework-structure.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/test-grep.sh
+  Executable : no
+  Size       : 571 bytes
+  Modified   : 2025-11-19 11:21:51
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:39:  "test-grep.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/verify-app-structure.sh
+  Executable : no
+  Size       : 1339 bytes
+  Modified   : 2025-11-24 16:28:09
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:40:  "verify-app-structure.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/verify-phase2a.sh
+  Executable : no
+  Size       : 3308 bytes
+  Modified   : 2025-11-19 11:23:41
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./tooling/legacy-shell-scripts/fix-supabase-clients.sh:76:if [ -f "$ROOT/verify-phase2a.sh" ]; then
+    - ./tooling/legacy-shell-scripts/fix-supabase-clients.sh:77:  bash "$ROOT/verify-phase2a.sh" || true
+    - ./tooling/legacy-shell-scripts/fix-supabase-clients.sh:79:  echo "⚠️ verify-phase2a.sh not found — skipping."
+    - ./docs/system/shell-scripts-audit.txt:51:    - ./tooling/legacy-shell-scripts/fix-supabase-clients.sh:76:if [ -f "$ROOT/verify-phase2a.sh" ]; then
+    - ./docs/system/shell-scripts-audit.txt:52:    - ./tooling/legacy-shell-scripts/fix-supabase-clients.sh:77:  bash "$ROOT/verify-phase2a.sh" || true
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/verify-phase2b.sh
+  Executable : no
+  Size       : 5324 bytes
+  Modified   : 2025-11-20 09:25:22
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:42:  "verify-phase2b.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/verify-phase3.sh
+  Executable : no
+  Size       : 4917 bytes
+  Modified   : 2025-11-22 10:56:51
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:43:  "verify-phase3.sh"
+
+-------------------------------------------------------------------
+File: tooling/legacy-shell-scripts/verify-rbac-sql.sh
+  Executable : no
+  Size       : 2573 bytes
+  Modified   : 2025-11-22 11:34:13
+  First line : #!/usr/bin/env bash
+  Referenced : yes
+  Reference sample:
+    - ./scripts/archive-legacy-shell-scripts.sh:44:  "verify-rbac-sql.sh"
+
+===================================================================
+ END OF REPORT
+===================================================================
