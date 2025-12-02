@@ -13,7 +13,8 @@ export default function RegisterPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
 
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -44,7 +45,9 @@ export default function RegisterPage() {
       password,
       options: {
         data: {
-          full_name: fullName,
+          // New discrete fields
+          first_name: firstName.trim(),
+          last_name: lastName.trim() || null,
           marketing_opt_out: marketingOptOut,
         },
       },
@@ -81,18 +84,32 @@ export default function RegisterPage() {
             </p>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
-              {/* Full Name */}
+              {/* First Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Full Name
+                  First Name
                 </label>
                 <input
                   type="text"
                   required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
                   className="mt-1 w-full rounded-lg border px-3 py-2"
-                  placeholder="John Doe"
+                  placeholder="John"
+                />
+              </div>
+
+              {/* Last Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Last Name
+                </label>
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                  placeholder="Doe"
                 />
               </div>
 
