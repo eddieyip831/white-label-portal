@@ -23,24 +23,38 @@ COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 
 
+CREATE OR REPLACE FUNCTION "public"."apply_claims_on_user_profile_change"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  PERFORM public.apply_claims_to_user(NEW.id);
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."apply_claims_on_user_profile_change"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."apply_claims_to_role_users"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
+    LANGUAGE "plpgsql"
     AS $$
 DECLARE
-    v_role_id uuid;
-    v_user_id uuid;
+  v_role_id uuid;
+  v_user_id uuid;
 BEGIN
-    v_role_id := COALESCE(NEW.role_id, OLD.role_id);
+  -- Pick role_id from NEW (insert/update) or OLD (delete)
+  v_role_id := COALESCE(NEW.role_id, OLD.role_id);
 
-    FOR v_user_id IN
-        SELECT user_id
-        FROM public.user_roles
-        WHERE role_id = v_role_id
-    LOOP
-        PERFORM public.apply_claims_to_user(v_user_id);
-    END LOOP;
+  FOR v_user_id IN
+    SELECT user_id
+    FROM public.user_roles
+    WHERE role_id = v_role_id
+  LOOP
+    PERFORM public.apply_claims_to_user(v_user_id);
+  END LOOP;
 
-    RETURN NEW;
+  RETURN NEW;
 END;
 $$;
 
@@ -49,20 +63,42 @@ ALTER FUNCTION "public"."apply_claims_to_role_users"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."apply_claims_to_user"("p_user_id" "uuid") RETURNS "void"
-    LANGUAGE "plpgsql" SECURITY DEFINER
+    LANGUAGE "plpgsql"
     AS $$
 DECLARE
-    v_claims jsonb;
+  v_claims       jsonb;
+  v_roles        jsonb;
+  v_permissions  jsonb;
+  v_tier         text;
+  v_tenant_id    text;
 BEGIN
-    v_claims := public.build_claims(p_user_id);
+  -- Build claims from our helper (tenant/tier/roles/permissions)
+  v_claims := public.build_claims(p_user_id);
 
-    UPDATE auth.users
-    SET raw_app_meta_data = jsonb_set(
-        COALESCE(raw_app_meta_data, '{}'::jsonb),
-        '{claims}',
-        v_claims
-    )
-    WHERE id = p_user_id;
+  -- Extract individual pieces, with safe defaults
+  v_roles       := COALESCE(v_claims->'roles', '[]'::jsonb);
+  v_permissions := COALESCE(v_claims->'permissions', '[]'::jsonb);
+  v_tier        := COALESCE(v_claims->>'tier', 'free');
+  v_tenant_id   := v_claims->>'tenant_id';
+
+  -- Flatten into top-level app_metadata keys.
+  -- IMPORTANT:
+  --  - Remove legacy nested "claims" (if it exists) with "- 'claims'"
+  --  - Then merge new flat keys so Supabase includes them in the JWT.
+  UPDATE auth.users
+  SET raw_app_meta_data =
+        COALESCE(raw_app_meta_data, '{}'::jsonb)
+        - 'claims'
+        || jsonb_build_object(
+             'roles',       v_roles,
+             'permissions', v_permissions,
+             'tier',        v_tier
+           )
+        || CASE
+             WHEN v_tenant_id IS NULL THEN '{}'::jsonb
+             ELSE jsonb_build_object('tenant_id', v_tenant_id)
+           END
+  WHERE id = p_user_id;
 END;
 $$;
 
@@ -70,36 +106,84 @@ $$;
 ALTER FUNCTION "public"."apply_claims_to_user"("p_user_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."assign_super_admin"("p_email" "text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_user_id uuid;
+    v_role_id uuid;
+BEGIN
+    ------------------------------------------------------------------
+    -- 1. Find user
+    ------------------------------------------------------------------
+    SELECT id INTO v_user_id
+    FROM auth.users
+    WHERE email = p_email;
+
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'User with email % not found', p_email;
+    END IF;
+
+    ------------------------------------------------------------------
+    -- 2. Find super_admin role
+    ------------------------------------------------------------------
+    SELECT id INTO v_role_id
+    FROM public.roles
+    WHERE name = 'super_admin';
+
+    IF v_role_id IS NULL THEN
+        RAISE EXCEPTION 'Role super_admin not found';
+    END IF;
+
+    ------------------------------------------------------------------
+    -- 3. Insert mapping (idempotent)
+    ------------------------------------------------------------------
+    INSERT INTO public.user_roles (user_id, role_id)
+    VALUES (v_user_id, v_role_id)
+    ON CONFLICT DO NOTHING;
+
+    ------------------------------------------------------------------
+    -- 4. Update JWT claims
+    ------------------------------------------------------------------
+    PERFORM public.apply_claims_to_user(v_user_id);
+
+    RAISE NOTICE 'Assigned super_admin to user % (%).', p_email, v_user_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."assign_super_admin"("p_email" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."build_claims"("p_user_id" "uuid") RETURNS "jsonb"
     LANGUAGE "plpgsql"
     AS $$
 DECLARE
-    v_tenant uuid;
-    v_tier text;
-    v_roles text[];
+    v_tier        text;
+    v_roles       text[];
     v_permissions text[];
 BEGIN
-    -- Tenant
-    SELECT tenant_id 
-    INTO v_tenant
-    FROM public.user_profile
-    WHERE id = p_user_id;
-
-    -- Tier
+    ----------------------------------------------------------------
+    -- Tier: if user_profile.tier_id is NULL, fall back to 'free'
+    ----------------------------------------------------------------
     SELECT t.name
     INTO v_tier
     FROM public.tiers t
     JOIN public.user_profile up ON up.tier_id = t.id
     WHERE up.id = p_user_id;
 
+    ----------------------------------------------------------------
     -- Roles
+    ----------------------------------------------------------------
     SELECT array_agg(r.name)::text[]
     INTO v_roles
     FROM public.user_roles ur
     JOIN public.roles r ON r.id = ur.role_id
     WHERE ur.user_id = p_user_id;
 
-    -- Permissions
+    ----------------------------------------------------------------
+    -- Permissions (distinct)
+    ----------------------------------------------------------------
     SELECT array_agg(DISTINCT p.name)::text[]
     INTO v_permissions
     FROM public.user_roles ur
@@ -108,9 +192,8 @@ BEGIN
     WHERE ur.user_id = p_user_id;
 
     RETURN jsonb_build_object(
-        'tenant_id', v_tenant,
-        'tier', COALESCE(v_tier, 'free'),
-        'roles', COALESCE(v_roles, ARRAY[]::text[]),
+        'tier',        COALESCE(v_tier, 'free'),
+        'roles',       COALESCE(v_roles, ARRAY[]::text[]),
         'permissions', COALESCE(v_permissions, ARRAY[]::text[])
     );
 END;
@@ -118,6 +201,43 @@ $$;
 
 
 ALTER FUNCTION "public"."build_claims"("p_user_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."enforce_single_tenant_membership"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    v_existing_tenant uuid;
+BEGIN
+    -- Check if user already has a tenant
+    SELECT tenant_id
+    INTO v_existing_tenant
+    FROM public.user_profile
+    WHERE id = NEW.user_id;
+
+    -- Case 1: No tenant yet → assign this one
+    IF v_existing_tenant IS NULL THEN
+        UPDATE public.user_profile
+        SET tenant_id = NEW.tenant_id
+        WHERE id = NEW.user_id;
+
+        RETURN NEW;
+    END IF;
+
+    -- Case 2: User already belongs to a tenant → block or overwrite
+    IF v_existing_tenant <> NEW.tenant_id THEN
+        RAISE EXCEPTION
+            'User % already belongs to tenant %, cannot assign tenant %',
+            NEW.user_id, v_existing_tenant, NEW.tenant_id;
+    END IF;
+
+    -- Case 3: Re-insert same tenant_id → allow
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."enforce_single_tenant_membership"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."get_role_permissions"("role_id" "uuid") RETURNS TABLE("permission" "text")
@@ -219,12 +339,11 @@ BEGIN
   -- 3) user_profile (upsert, never throw)
   --------------------------------------------------------------------
   BEGIN
-    INSERT INTO public.user_profile (id, first_name, last_name, tenant_id, tier_id)
-    VALUES (v_user_id, v_first_name, v_last_name, v_tenant_id, v_free_tier)
+    INSERT INTO public.user_profile (id, first_name, last_name, tier_id)
+    VALUES (v_user_id, v_first_name, v_last_name, v_free_tier)
     ON CONFLICT (id) DO UPDATE
       SET first_name = EXCLUDED.first_name,
           last_name  = EXCLUDED.last_name,
-          tenant_id  = COALESCE(public.user_profile.tenant_id, EXCLUDED.tenant_id),
           tier_id    = COALESCE(public.user_profile.tier_id, EXCLUDED.tier_id);
   EXCEPTION WHEN OTHERS THEN
     RAISE LOG 'on_auth_user_created: user_profile upsert failed for %: %',
@@ -232,23 +351,11 @@ BEGIN
   END;
 
   --------------------------------------------------------------------
-  -- 4) user_tiers
-  --------------------------------------------------------------------
-  -- BEGIN
-  --   INSERT INTO public.user_tiers (user_id, tier_id)
-  --   VALUES (v_user_id, v_free_tier)
-  --   ON CONFLICT DO NOTHING;
-  -- EXCEPTION WHEN OTHERS THEN
-  --   RAISE LOG 'on_auth_user_created: user_tiers insert failed for %: %',
-  --     v_user_id, SQLERRM;
-  -- END;
-
-  --------------------------------------------------------------------
-  -- 5) user_roles
+  -- 4) user_roles
   --------------------------------------------------------------------
   BEGIN
-    INSERT INTO public.user_roles (user_id, role_id, tenant_id)
-    VALUES (v_user_id, v_member_role, v_tenant_id)
+    INSERT INTO public.user_roles (user_id, role_id)
+    VALUES (v_user_id, v_member_role)
     ON CONFLICT DO NOTHING;
   EXCEPTION WHEN OTHERS THEN
     RAISE LOG 'on_auth_user_created: user_roles insert failed for %: %',
@@ -256,7 +363,7 @@ BEGIN
   END;
 
   --------------------------------------------------------------------
-  -- 6) Consents: privacy + terms if accepted
+  -- 5) Consents: privacy + terms if accepted
   --------------------------------------------------------------------
   IF v_accept_terms_and_privacy THEN
     BEGIN
@@ -270,8 +377,8 @@ BEGIN
       LIMIT 1;
 
       IF v_privacy_doc_id IS NOT NULL THEN
-        INSERT INTO public.user_consents (user_id, tenant_id, document_id, version)
-        VALUES (v_user_id, v_tenant_id, v_privacy_doc_id, v_privacy_version);
+        INSERT INTO public.user_consents (user_id, document_id, version)
+        VALUES (v_user_id, v_privacy_doc_id, v_privacy_version);
       END IF;
 
       -- Terms of Service
@@ -284,8 +391,8 @@ BEGIN
       LIMIT 1;
 
       IF v_terms_doc_id IS NOT NULL THEN
-        INSERT INTO public.user_consents (user_id, tenant_id, document_id, version)
-        VALUES (v_user_id, v_tenant_id, v_terms_doc_id, v_terms_version);
+        INSERT INTO public.user_consents (user_id, document_id, version)
+        VALUES (v_user_id, v_terms_doc_id, v_terms_version);
       END IF;
     EXCEPTION WHEN OTHERS THEN
       RAISE LOG 'on_auth_user_created: privacy/terms consents failed for %: %',
@@ -294,7 +401,7 @@ BEGIN
   END IF;
 
   --------------------------------------------------------------------
-  -- 7) Marketing consent – only if user did NOT opt out
+  -- 6) Marketing consent – only if user did NOT opt out
   --------------------------------------------------------------------
   IF NOT v_marketing_opt_out THEN
     BEGIN
@@ -307,14 +414,19 @@ BEGIN
       LIMIT 1;
 
       IF v_marketing_doc_id IS NOT NULL THEN
-        INSERT INTO public.user_consents (user_id, tenant_id, document_id, version)
-        VALUES (v_user_id, v_tenant_id, v_marketing_doc_id, v_marketing_version);
+        INSERT INTO public.user_consents (user_id, document_id, version)
+        VALUES (v_user_id, v_marketing_doc_id, v_marketing_version);
       END IF;
     EXCEPTION WHEN OTHERS THEN
       RAISE LOG 'on_auth_user_created: marketing consent failed for %: %',
         v_user_id, SQLERRM;
     END;
   END IF;
+
+  --------------------------------------------------------------------
+  -- 7) Build & apply claims for the new user
+  --------------------------------------------------------------------
+  PERFORM public.apply_claims_to_user(v_user_id);
 
   RETURN NEW;
 END;
@@ -409,8 +521,7 @@ CREATE TABLE IF NOT EXISTS "public"."permissions" (
     "name" "text" NOT NULL,
     "description" "text",
     "module" "text",
-    "created_at" timestamp with time zone DEFAULT "now"(),
-    "tenant_id" "uuid"
+    "created_at" timestamp with time zone DEFAULT "now"()
 );
 
 
@@ -420,8 +531,7 @@ ALTER TABLE "public"."permissions" OWNER TO "postgres";
 CREATE TABLE IF NOT EXISTS "public"."role_permissions" (
     "role_id" "uuid" NOT NULL,
     "permission_id" "uuid" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"(),
-    "tenant_id" "uuid" NOT NULL
+    "created_at" timestamp with time zone DEFAULT "now"()
 );
 
 
@@ -432,8 +542,7 @@ CREATE TABLE IF NOT EXISTS "public"."roles" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "name" "text" NOT NULL,
     "description" "text",
-    "created_at" timestamp with time zone DEFAULT "now"(),
-    "tenant_id" "uuid"
+    "created_at" timestamp with time zone DEFAULT "now"()
 );
 
 
@@ -441,11 +550,11 @@ ALTER TABLE "public"."roles" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."tenant_members" (
-    "tenant_id" "uuid" NOT NULL,
     "user_id" "uuid" NOT NULL,
     "role" "text" DEFAULT 'member'::"text" NOT NULL,
     "status" "text" DEFAULT 'active'::"text" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "tenant_id" "uuid" NOT NULL
 );
 
 
@@ -464,9 +573,26 @@ CREATE TABLE IF NOT EXISTS "public"."tenants" (
 ALTER TABLE "public"."tenants" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."tier_functions" (
+    "tier_id" "uuid" NOT NULL,
+    "function_id" "uuid" NOT NULL
+);
+
+
+ALTER TABLE "public"."tier_functions" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."tier_permissions" (
+    "tier_id" "uuid" NOT NULL,
+    "permission_id" "uuid" NOT NULL
+);
+
+
+ALTER TABLE "public"."tier_permissions" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."tiers" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "tenant_id" "uuid",
     "name" "text" NOT NULL,
     "description" "text",
     "code" "text",
@@ -477,9 +603,46 @@ CREATE TABLE IF NOT EXISTS "public"."tiers" (
 ALTER TABLE "public"."tiers" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."user_attribute_definitions" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "key" "text" NOT NULL,
+    "label" "text" NOT NULL,
+    "data_type" "text" NOT NULL,
+    "required" boolean DEFAULT false,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."user_attribute_definitions" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."user_attributes" (
+    "user_id" "uuid" NOT NULL,
+    "attribute_key" "text" NOT NULL,
+    "value" "jsonb",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."user_attributes" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."user_consents" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "document_id" "uuid" NOT NULL,
+    "version" "text" NOT NULL,
+    "consented_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "revoked_at" timestamp with time zone
+);
+
+
+ALTER TABLE "public"."user_consents" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."user_profile" (
     "id" "uuid" NOT NULL,
-    "tenant_id" "uuid",
     "attributes" "jsonb" DEFAULT '{}'::"jsonb",
     "tier_id" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"(),
@@ -495,93 +658,11 @@ ALTER TABLE "public"."user_profile" OWNER TO "postgres";
 CREATE TABLE IF NOT EXISTS "public"."user_roles" (
     "user_id" "uuid" NOT NULL,
     "role_id" "uuid" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"(),
-    "tenant_id" "uuid" NOT NULL
+    "created_at" timestamp with time zone DEFAULT "now"()
 );
 
 
 ALTER TABLE "public"."user_roles" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."tenant_members_admin" AS
- SELECT "ur"."tenant_id",
-    "t"."name" AS "tenant_name",
-    "ur"."user_id",
-    "u"."email" AS "user_email",
-    "ur"."role_id",
-    "r"."name" AS "role_name",
-    "up"."tier_id",
-    "tr"."name" AS "tier_name",
-    "ur"."created_at"
-   FROM ((((("public"."user_roles" "ur"
-     JOIN "public"."tenants" "t" ON (("t"."id" = "ur"."tenant_id")))
-     JOIN "auth"."users" "u" ON (("u"."id" = "ur"."user_id")))
-     LEFT JOIN "public"."roles" "r" ON (("r"."id" = "ur"."role_id")))
-     LEFT JOIN "public"."user_profile" "up" ON (("up"."id" = "ur"."user_id")))
-     LEFT JOIN "public"."tiers" "tr" ON (("tr"."id" = "up"."tier_id")));
-
-
-ALTER VIEW "public"."tenant_members_admin" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."tier_functions" (
-    "tier_id" "uuid" NOT NULL,
-    "function_id" "uuid" NOT NULL
-);
-
-
-ALTER TABLE "public"."tier_functions" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."tier_permissions" (
-    "tier_id" "uuid" NOT NULL,
-    "permission_id" "uuid" NOT NULL,
-    "tenant_id" "uuid" NOT NULL
-);
-
-
-ALTER TABLE "public"."tier_permissions" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."user_attribute_definitions" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "key" "text" NOT NULL,
-    "label" "text" NOT NULL,
-    "data_type" "text" NOT NULL,
-    "required" boolean DEFAULT false,
-    "created_at" timestamp with time zone DEFAULT "now"(),
-    "tenant_id" "uuid"
-);
-
-
-ALTER TABLE "public"."user_attribute_definitions" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."user_attributes" (
-    "user_id" "uuid" NOT NULL,
-    "attribute_key" "text" NOT NULL,
-    "value" "jsonb",
-    "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"(),
-    "tenant_id" "uuid" NOT NULL
-);
-
-
-ALTER TABLE "public"."user_attributes" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."user_consents" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "user_id" "uuid" NOT NULL,
-    "tenant_id" "uuid",
-    "document_id" "uuid" NOT NULL,
-    "version" "text" NOT NULL,
-    "consented_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "revoked_at" timestamp with time zone
-);
-
-
-ALTER TABLE "public"."user_consents" OWNER TO "postgres";
 
 
 ALTER TABLE ONLY "public"."function_groups"
@@ -645,7 +726,7 @@ ALTER TABLE ONLY "public"."roles"
 
 
 ALTER TABLE ONLY "public"."tenant_members"
-    ADD CONSTRAINT "tenant_members_pkey" PRIMARY KEY ("tenant_id", "user_id");
+    ADD CONSTRAINT "tenant_members_one_tenant_per_user" UNIQUE ("user_id");
 
 
 
@@ -676,11 +757,6 @@ ALTER TABLE ONLY "public"."tiers"
 
 ALTER TABLE ONLY "public"."tiers"
     ADD CONSTRAINT "tiers_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."tiers"
-    ADD CONSTRAINT "tiers_tenant_id_name_key" UNIQUE ("tenant_id", "name");
 
 
 
@@ -718,10 +794,6 @@ CREATE INDEX "idx_user_consents_document_id" ON "public"."user_consents" USING "
 
 
 
-CREATE INDEX "idx_user_consents_tenant_id" ON "public"."user_consents" USING "btree" ("tenant_id");
-
-
-
 CREATE INDEX "idx_user_consents_user_id" ON "public"."user_consents" USING "btree" ("user_id");
 
 
@@ -730,18 +802,20 @@ CREATE UNIQUE INDEX "legal_documents_code_version_key" ON "public"."legal_docume
 
 
 
+CREATE OR REPLACE TRIGGER "trg_enforce_single_tenant_membership" BEFORE INSERT ON "public"."tenant_members" FOR EACH ROW EXECUTE FUNCTION "public"."enforce_single_tenant_membership"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_user_profile_apply_claims" AFTER INSERT OR UPDATE ON "public"."user_profile" FOR EACH ROW EXECUTE FUNCTION "public"."apply_claims_on_user_profile_change"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_user_roles_apply_claims" AFTER INSERT OR DELETE OR UPDATE ON "public"."user_roles" FOR EACH ROW EXECUTE FUNCTION "public"."apply_claims_to_role_users"();
+
+
+
 ALTER TABLE ONLY "public"."functions"
     ADD CONSTRAINT "functions_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."function_groups"("id") ON DELETE SET NULL;
-
-
-
-ALTER TABLE ONLY "public"."modules"
-    ADD CONSTRAINT "modules_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-
-
-ALTER TABLE ONLY "public"."permissions"
-    ADD CONSTRAINT "permissions_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
 
 
 
@@ -755,18 +829,8 @@ ALTER TABLE ONLY "public"."role_permissions"
 
 
 
-ALTER TABLE ONLY "public"."roles"
-    ADD CONSTRAINT "roles_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-
-
-ALTER TABLE ONLY "public"."role_permissions"
-    ADD CONSTRAINT "rp_tenant_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE CASCADE;
-
-
-
 ALTER TABLE ONLY "public"."tenant_members"
-    ADD CONSTRAINT "tenant_members_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE CASCADE;
+    ADD CONSTRAINT "tenant_members_tenant_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE CASCADE;
 
 
 
@@ -800,31 +864,6 @@ ALTER TABLE ONLY "public"."tier_permissions"
 
 
 
-ALTER TABLE ONLY "public"."tiers"
-    ADD CONSTRAINT "tiers_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."tier_permissions"
-    ADD CONSTRAINT "tp_tenant_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."user_attributes"
-    ADD CONSTRAINT "ua_tenant_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."user_attribute_definitions"
-    ADD CONSTRAINT "uad_tenant_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."user_roles"
-    ADD CONSTRAINT "ur_tenant_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE CASCADE;
-
-
-
 ALTER TABLE ONLY "public"."user_attributes"
     ADD CONSTRAINT "user_attributes_attribute_key_fkey" FOREIGN KEY ("attribute_key") REFERENCES "public"."user_attribute_definitions"("key");
 
@@ -841,22 +880,12 @@ ALTER TABLE ONLY "public"."user_consents"
 
 
 ALTER TABLE ONLY "public"."user_consents"
-    ADD CONSTRAINT "user_consents_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE SET NULL;
-
-
-
-ALTER TABLE ONLY "public"."user_consents"
     ADD CONSTRAINT "user_consents_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
 
 
 
 ALTER TABLE ONLY "public"."user_profile"
     ADD CONSTRAINT "user_profile_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."user_profile"
-    ADD CONSTRAINT "user_profile_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
 
 
 
@@ -952,6 +981,18 @@ CREATE POLICY "deny all select" ON "public"."user_roles" FOR SELECT USING (false
 
 
 
+CREATE POLICY "global_read_permissions" ON "public"."permissions" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "global_read_role_permissions" ON "public"."role_permissions" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "global_read_roles" ON "public"."roles" FOR SELECT USING (true);
+
+
+
 ALTER TABLE "public"."modules" ENABLE ROW LEVEL SECURITY;
 
 
@@ -984,103 +1025,11 @@ CREATE POLICY "service role full access" ON "public"."user_roles" TO "service_ro
 
 
 
-CREATE POLICY "tenant_delete_modules" ON "public"."modules" FOR DELETE USING (("auth"."role"() = 'super_admin'::"text"));
-
-
-
-CREATE POLICY "tenant_delete_permissions" ON "public"."permissions" FOR DELETE USING (("auth"."role"() = 'super_admin'::"text"));
-
-
-
-CREATE POLICY "tenant_insert_modules" ON "public"."modules" FOR INSERT WITH CHECK ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid")));
-
-
-
-CREATE POLICY "tenant_insert_permissions" ON "public"."permissions" FOR INSERT WITH CHECK ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid")));
-
-
-
-CREATE POLICY "tenant_isolation_modules" ON "public"."modules" FOR SELECT USING (("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"));
-
-
-
-CREATE POLICY "tenant_isolation_permissions" ON "public"."permissions" FOR SELECT USING (("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"));
-
-
-
-CREATE POLICY "tenant_isolation_role_permissions" ON "public"."role_permissions" FOR SELECT USING (("permission_id" IN ( SELECT "permissions"."id"
-   FROM "public"."permissions"
-  WHERE ("permissions"."tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"))));
-
-
-
-CREATE POLICY "tenant_isolation_roles" ON "public"."roles" FOR SELECT USING (("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"));
-
-
-
-CREATE POLICY "tenant_isolation_tier_permissions" ON "public"."tier_permissions" FOR SELECT USING (("tier_id" IN ( SELECT "tiers"."id"
-   FROM "public"."tiers"
-  WHERE ("tiers"."tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"))));
-
-
-
-CREATE POLICY "tenant_isolation_tiers" ON "public"."tiers" FOR SELECT USING (("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"));
-
-
-
-CREATE POLICY "tenant_isolation_user_attribute_definitions" ON "public"."user_attribute_definitions" FOR SELECT USING (true);
-
-
-
-CREATE POLICY "tenant_isolation_user_attributes" ON "public"."user_attributes" FOR SELECT USING (("user_id" IN ( SELECT "user_profile"."id"
-   FROM "public"."user_profile"
-  WHERE ("user_profile"."tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"))));
-
-
-
-CREATE POLICY "tenant_isolation_user_profile" ON "public"."user_profile" FOR SELECT USING (("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"));
-
-
-
-CREATE POLICY "tenant_isolation_user_roles" ON "public"."user_roles" FOR SELECT USING (("role_id" IN ( SELECT "roles"."id"
-   FROM "public"."roles"
-  WHERE ("roles"."tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"))));
-
-
-
-CREATE POLICY "tenant_modify_user_roles" ON "public"."user_roles" USING ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"))) WITH CHECK ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid")));
-
-
-
-CREATE POLICY "tenant_select_modules" ON "public"."modules" FOR SELECT USING ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid")));
-
-
-
-CREATE POLICY "tenant_select_permissions" ON "public"."permissions" FOR SELECT USING ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid")));
-
-
-
-CREATE POLICY "tenant_select_user_roles" ON "public"."user_roles" FOR SELECT USING ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid")));
-
-
-
-CREATE POLICY "tenant_update_modules" ON "public"."modules" FOR UPDATE USING ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"))) WITH CHECK ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid")));
-
-
-
-CREATE POLICY "tenant_update_permissions" ON "public"."permissions" FOR UPDATE USING ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"))) WITH CHECK ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid")));
+CREATE POLICY "tenant_members_read" ON "public"."tenant_members" FOR SELECT USING (("auth"."role"() = 'super_admin'::"text"));
 
 
 
 ALTER TABLE "public"."tenants" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "tenants_super_admin_modify" ON "public"."tenants" USING (("auth"."role"() = 'super_admin'::"text")) WITH CHECK (("auth"."role"() = 'super_admin'::"text"));
-
-
-
-CREATE POLICY "tenants_super_admin_select" ON "public"."tenants" FOR SELECT USING (("auth"."role"() = 'super_admin'::"text"));
-
 
 
 ALTER TABLE "public"."tier_permissions" ENABLE ROW LEVEL SECURITY;
@@ -1098,15 +1047,11 @@ ALTER TABLE "public"."user_attributes" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."user_profile" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "user_profile_admin_update" ON "public"."user_profile" FOR UPDATE USING ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid"))) WITH CHECK ((("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid")));
-
-
-
 CREATE POLICY "user_profile_delete" ON "public"."user_profile" FOR DELETE USING (("auth"."role"() = 'super_admin'::"text"));
 
 
 
-CREATE POLICY "user_profile_self_select" ON "public"."user_profile" FOR SELECT USING ((("id" = "auth"."uid"()) OR ("auth"."role"() = 'super_admin'::"text") OR ("tenant_id" = (("auth"."jwt"() ->> 'tenant_id'::"text"))::"uuid")));
+CREATE POLICY "user_profile_read" ON "public"."user_profile" FOR SELECT USING ((("auth"."uid"() = "id") OR ("auth"."role"() = 'super_admin'::"text")));
 
 
 
@@ -1114,13 +1059,31 @@ CREATE POLICY "user_profile_self_update" ON "public"."user_profile" FOR UPDATE U
 
 
 
+CREATE POLICY "user_profile_update" ON "public"."user_profile" FOR UPDATE USING ((("auth"."uid"() = "id") OR ("auth"."role"() = 'super_admin'::"text")));
+
+
+
 ALTER TABLE "public"."user_roles" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "user_roles_read" ON "public"."user_roles" FOR SELECT USING (("auth"."role"() = 'super_admin'::"text"));
+
+
+
+CREATE POLICY "user_roles_write" ON "public"."user_roles" USING (("auth"."role"() = 'super_admin'::"text"));
+
 
 
 GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."apply_claims_on_user_profile_change"() TO "anon";
+GRANT ALL ON FUNCTION "public"."apply_claims_on_user_profile_change"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_claims_on_user_profile_change"() TO "service_role";
 
 
 
@@ -1136,9 +1099,21 @@ GRANT ALL ON FUNCTION "public"."apply_claims_to_user"("p_user_id" "uuid") TO "se
 
 
 
+GRANT ALL ON FUNCTION "public"."assign_super_admin"("p_email" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."assign_super_admin"("p_email" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."assign_super_admin"("p_email" "text") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."build_claims"("p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."build_claims"("p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."build_claims"("p_user_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."enforce_single_tenant_membership"() TO "anon";
+GRANT ALL ON FUNCTION "public"."enforce_single_tenant_membership"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."enforce_single_tenant_membership"() TO "service_role";
 
 
 
@@ -1220,30 +1195,6 @@ GRANT ALL ON TABLE "public"."tenants" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."tiers" TO "anon";
-GRANT ALL ON TABLE "public"."tiers" TO "authenticated";
-GRANT ALL ON TABLE "public"."tiers" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."user_profile" TO "anon";
-GRANT ALL ON TABLE "public"."user_profile" TO "authenticated";
-GRANT ALL ON TABLE "public"."user_profile" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."user_roles" TO "anon";
-GRANT ALL ON TABLE "public"."user_roles" TO "authenticated";
-GRANT ALL ON TABLE "public"."user_roles" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."tenant_members_admin" TO "anon";
-GRANT ALL ON TABLE "public"."tenant_members_admin" TO "authenticated";
-GRANT ALL ON TABLE "public"."tenant_members_admin" TO "service_role";
-
-
-
 GRANT ALL ON TABLE "public"."tier_functions" TO "anon";
 GRANT ALL ON TABLE "public"."tier_functions" TO "authenticated";
 GRANT ALL ON TABLE "public"."tier_functions" TO "service_role";
@@ -1253,6 +1204,12 @@ GRANT ALL ON TABLE "public"."tier_functions" TO "service_role";
 GRANT ALL ON TABLE "public"."tier_permissions" TO "anon";
 GRANT ALL ON TABLE "public"."tier_permissions" TO "authenticated";
 GRANT ALL ON TABLE "public"."tier_permissions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."tiers" TO "anon";
+GRANT ALL ON TABLE "public"."tiers" TO "authenticated";
+GRANT ALL ON TABLE "public"."tiers" TO "service_role";
 
 
 
@@ -1271,6 +1228,18 @@ GRANT ALL ON TABLE "public"."user_attributes" TO "service_role";
 GRANT ALL ON TABLE "public"."user_consents" TO "anon";
 GRANT ALL ON TABLE "public"."user_consents" TO "authenticated";
 GRANT ALL ON TABLE "public"."user_consents" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."user_profile" TO "anon";
+GRANT ALL ON TABLE "public"."user_profile" TO "authenticated";
+GRANT ALL ON TABLE "public"."user_profile" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."user_roles" TO "anon";
+GRANT ALL ON TABLE "public"."user_roles" TO "authenticated";
+GRANT ALL ON TABLE "public"."user_roles" TO "service_role";
 
 
 

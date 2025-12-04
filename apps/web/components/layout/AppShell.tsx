@@ -2,16 +2,14 @@
 
 import React from 'react';
 
-// ⭐ NEW: React Query imports
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import Sidebar from '../admin/sidebar';
 import AppHeaderAuth from './AppHeaderAuth';
-
-// Create QueryClient (once)
-const queryClient = new QueryClient();
+import Sidebar from './Sidebar';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
+  const queryClient = new QueryClient();
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="flex min-h-screen">

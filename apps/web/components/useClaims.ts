@@ -2,37 +2,49 @@
 
 import { useEffect, useState } from 'react';
 
-export function useClaims() {
-  const [claims, setClaims] = useState<any>(null);
+import { useSupabase } from '~/components/providers/supabase-provider';
+
+export interface Claims {
+  email: string | null;
+  name: string | null;
+  roles: string[];
+  tier: string | null;
+  permissions: string[];
+}
+
+export function useClaims(): Claims {
+  const { supabase } = useSupabase();
+  const [claims, setClaims] = useState<Claims>({
+    email: null,
+    name: null,
+    roles: [],
+    tier: null,
+    permissions: [],
+  });
 
   useEffect(() => {
-    const token = document.cookie
-      .split('; ')
-      .find((c) => c.startsWith('sb-access-token='))
-      ?.split('=')[1];
+    async function load() {
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
 
-    if (!token) return;
+      const meta = (user?.raw_app_meta_data as any) || {};
 
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      setClaims(payload?.app_metadata?.claims ?? null);
-    } catch {}
-  }, []);
+      setClaims({
+        email: user?.email ?? null,
+        name: (user?.user_metadata as any)?.full_name ?? null,
+        roles: meta.roles ?? [],
+        tier: meta.tier ?? null,
+        permissions: meta.permissions ?? [],
+      });
+    }
+
+    load();
+  }, [supabase]);
 
   return claims;
 }
 
-export function useRole(role: string) {
-  const claims = useClaims();
-  return claims?.roles?.includes(role) ?? false;
-}
-
-export function usePermission(perm: string) {
-  const claims = useClaims();
-  return claims?.permissions?.includes(perm) ?? false;
-}
-
-export function useModule(moduleKey: string) {
-  const claims = useClaims();
-  return claims?.permissions?.includes(`${moduleKey}.access`) ?? false;
-}
+/**
+ * @deprecated Prefer `useClaims` directly. This is kept for existing imports.
+ */
+export const useClaimsClient = useClaims;

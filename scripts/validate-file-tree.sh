@@ -25,6 +25,8 @@ if [[ -f "$BASELINE" ]]; then
   else
     echo
     echo "⚠️  Differences detected (see diff above)."
+    echo "To create new baseline from the current state, run:"
+    echo "  cp \"$SNAPSHOT\" \"$BASELINE\""
   fi
 else
   echo

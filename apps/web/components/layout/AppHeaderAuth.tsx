@@ -1,34 +1,49 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
-import { useUser } from '@kit/supabase/hooks/use-user';
+import UserMenu from '~/components/layout/UserMenu';
 
-import AdminMenu from '~/components/layout/AdminMenu';
+function getPageTitle(pathname: string): string {
+  if (pathname === '/home') return 'Home';
+  if (pathname.startsWith('/admin/users')) return 'Users';
+  if (pathname.startsWith('/admin/roles')) return 'Roles';
+  if (pathname.startsWith('/admin/permissions')) return 'Permissions';
+  if (pathname.startsWith('/admin/attributes')) return 'Attributes';
+  if (pathname.startsWith('/admin/modules')) return 'Modules';
+  return '';
+}
 
 export default function AppHeaderAuth() {
-  // MakerKit user query (returns UseQueryResult<JwtPayload | null>)
-  const userQuery = useUser();
-  const user = userQuery.data;
+  const pathname = usePathname();
+  const pageTitle = getPageTitle(pathname);
 
-  if (!user) {
-    return null;
+  if (process.env.NEXT_PUBLIC_LOG_LEVEL === 'debug') {
+    console.log('[AppHeaderAuth]', { pathname, pageTitle });
   }
 
-  // role lives inside JWT payload (app_metadata.role)
-  const role = user.app_metadata?.role;
-  const isSuperAdmin = role === 'super_admin';
-
   return (
-    <header className="flex items-center justify-between border-b bg-white px-6 py-4">
-      <Link href="/home" className="text-xl font-semibold">
-        Portal
-      </Link>
+    <div className="flex items-center justify-between border-b px-4 py-2">
+      <div className="flex items-baseline gap-2">
+        <Link href="/home" className="text-lg font-semibold text-gray-900">
+          Portal
+        </Link>
+        {pageTitle && (
+          <span className="text-sm text-gray-500">{pageTitle}</span>
+        )}
+      </div>
 
-      <nav className="flex items-center gap-6">
-        <Link href="/home">Home</Link>
-        {isSuperAdmin && <AdminMenu />}
-      </nav>
-    </header>
+      {/* 🔥 Claims-based menu */}
+      <UserMenu />
+
+      {/* Temp sign out*/}
+      <Link
+        href="/auth/signout"
+        className="text-sm text-gray-600 hover:text-gray-900"
+      >
+        Sign out
+      </Link>
+    </div>
   );
 }

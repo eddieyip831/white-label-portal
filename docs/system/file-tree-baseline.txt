@@ -9,6 +9,7 @@ apps/web/app/(app)/admin/users/[id]
 apps/web/app/(app)/admin/users/create
 apps/web/app/(app)/home
 apps/web/app/(app)/settings
+apps/web/app/(app)/settings/profile
 apps/web/app/(app)/update-password
 apps/web/app/(auth)
 apps/web/app/api
@@ -21,11 +22,14 @@ apps/web/app/api/admin-api/permissions
 apps/web/app/api/admin-api/roles
 apps/web/app/api/admin-api/users
 apps/web/app/api/admin-api/users/[user_id]
+apps/web/app/api/auth
+apps/web/app/api/auth/refresh-claims
 apps/web/app/api/health
 apps/web/app/auth
 apps/web/app/auth/forgot-password
 apps/web/app/auth/register
 apps/web/app/auth/reset-password
+apps/web/app/auth/signout
 apps/web/app/legal
 apps/web/app/legal/privacy
 apps/web/app/legal/terms
