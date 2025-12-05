@@ -1,128 +1,166 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+import type { Claims } from '~/components/useClaims';
 import { useClaims } from '~/components/useClaims';
-
-export interface Claims {
-  email: string | null;
-  name: string | null;
-  tier: string | null;
-  roles: string[] | null;
-  permissions?: string[];
-  tenantId: string | null;
-  rawMeta?: Record<string, any>;
-  rawClaims?: Record<string, any>;
-}
+import { supabase } from '~/lib/supabase/client';
 
 function deriveDisplayName(c: Claims): string {
-  if (c.name) return c.name.trim();
-  if (c.email) return c.email.split('@')[0]!;
+  const name = c.name?.trim();
+  if (name) return name;
+
+  const email = c.email?.trim();
+  if (email) {
+    const [localPart] = email.split('@');
+    return localPart && localPart.trim() ? localPart.trim() : 'User';
+  }
+
   return 'User';
 }
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
+
   if (parts.length === 0) return 'US';
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
+
+  const first = parts[0] ?? '';
+
+  if (parts.length === 1) {
+    const initials = first.slice(0, 2);
+    return initials ? initials.toUpperCase() : 'US';
+  }
+
+  const last = parts[parts.length - 1] ?? first;
+  const initials = `${first.charAt(0)}${last.charAt(0)}`.trim();
+
+  return initials ? initials.toUpperCase() : 'US';
 }
 
-export default function UserMenu() {
+type UserMenuProps = {
+  claims?: Claims | null;
+};
+
+export default function UserMenu({ claims: injectedClaims }: UserMenuProps = {}) {
   const router = useRouter();
+  const fallbackClaims = useClaims();
+  const claims = injectedClaims ?? fallbackClaims;
+
   const [pending, setPending] = useState(false);
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  const claims = useClaims();
-  if (!claims) return null;
+  useEffect(() => {
+    function handlePointer(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
 
-  // -----------------------------
-  // ⭐ MERGE CLAIMS SAFELY
-  // -----------------------------
-  const merged: Claims = {
-    email: claims.email ?? claims.rawMeta?.email ?? null,
-    name: claims.name ?? claims.rawMeta?.name ?? null,
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    }
 
-    tier: claims.tier ?? claims.rawMeta?.tier ?? 'free',
+    document.addEventListener('mousedown', handlePointer);
+    document.addEventListener('keydown', handleKey);
 
-    roles:
-      claims.roles && claims.roles.length > 0
-        ? claims.roles
-        : (claims.rawMeta?.roles ?? []),
+    return () => {
+      document.removeEventListener('mousedown', handlePointer);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, []);
 
-    permissions:
-      claims.permissions && claims.permissions.length > 0
-        ? claims.permissions
-        : (claims.rawMeta?.permissions ?? []),
+  if (!claims) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="h-6 w-16 animate-pulse rounded-full bg-gray-200" />
+        <span className="h-10 w-10 animate-pulse rounded-full bg-gray-200" />
+      </div>
+    );
+  }
 
-    tenantId: claims.tenantId ?? null,
-    rawMeta: claims.rawMeta,
-    rawClaims: claims.rawClaims,
-  };
-
-  console.debug('[UserMenu] FINAL merged claims:', merged);
-
-  const name = deriveDisplayName(merged);
-  const initials = getInitials(name);
-
-  const showDebug =
-    typeof process !== 'undefined' &&
-    process.env.NEXT_PUBLIC_LOG_LEVEL === 'debug';
+  const tierLabel = (claims.tier ?? 'free').toLowerCase();
+  const displayName = deriveDisplayName(claims);
+  const initials = getInitials(displayName);
 
   async function handleLogout() {
     setPending(true);
     try {
-      await fetch('/auth/signout', { method: 'GET' });
-    } finally {
+      await supabase.auth.signOut();
+      setOpen(false);
       router.push('/');
+    } catch (error) {
+      console.error('[UserMenu] logout failed', error);
+    } finally {
       setPending(false);
     }
   }
 
+  const menuItems = [
+    {
+      key: 'profile',
+      label: 'Profile',
+      node: (
+        <Link
+          href="/settings/profile"
+          onClick={() => setOpen(false)}
+          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          Profile
+        </Link>
+      ),
+    },
+    {
+      key: 'logout',
+      label: 'Logout',
+      node: (
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={pending}
+          className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:opacity-60"
+        >
+          {pending ? 'Logging out…' : 'Logout'}
+        </button>
+      ),
+    },
+  ];
+
   return (
-    <div className="flex items-center gap-4 pr-4">
-      <div className="hidden text-right sm:block">
-        <div className="text-xs text-gray-400 uppercase">Signed in as</div>
+    <div className="relative flex items-center gap-3" ref={menuRef}>
+      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold capitalize text-gray-700">
+        {tierLabel}
+      </span>
 
-        <div className="text-sm font-medium text-gray-900">{name}</div>
-        <div className="text-xs text-gray-500">{merged.email}</div>
-
-        <div className="mt-1 text-xs font-semibold text-blue-600">
-          Tier: {merged.tier}
-        </div>
-
-        {showDebug && (
-          <div className="mt-2 space-y-1 text-[10px] text-gray-400">
-            <div>Roles: {merged.roles?.join(', ') || 'None'}</div>
-            <div>Perms: {merged.permissions?.length ?? 0}</div>
-            <div>Tenant: {merged.tenantId ?? 'N/A'}</div>
-          </div>
-        )}
-      </div>
-
-      {/* Avatar */}
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-200 text-sm font-semibold text-gray-700">
-        {initials}
-      </div>
-
-      {/* Profile link */}
-      <Link
-        href="/settings/profile"
-        className="hidden rounded-full border px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 sm:inline-block"
-      >
-        Profile
-      </Link>
-
-      {/* Logout */}
       <button
-        onClick={handleLogout}
-        disabled={pending}
-        className="rounded-full bg-gray-900 px-3 py-1 text-xs text-white hover:bg-gray-800 disabled:opacity-50"
+        type="button"
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold uppercase text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
       >
-        {pending ? 'Logging out…' : 'Logout'}
+        {initials}
       </button>
+
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-3 w-56 overflow-hidden rounded-md border bg-white shadow-xl">
+          <div className="border-b px-4 py-3">
+            <p className="text-sm font-semibold text-gray-900">{displayName}</p>
+            <p className="text-xs text-gray-500">{claims.email ?? 'No email'}</p>
+          </div>
+
+          <div className="flex flex-col py-1">
+            {menuItems.map((item) => (
+              <div key={item.key}>{item.node}</div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

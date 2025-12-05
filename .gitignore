@@ -47,3 +47,9 @@ docs/chatgpt-project-instructions.md
 
 # TypeScript build info
 *.tsbuildinfo
+
+.turbo/
+supabase/.temp/
+types/css.d.ts
+*.bak.sql
+*.bak.md

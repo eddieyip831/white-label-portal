@@ -12,33 +12,50 @@ export interface Claims {
   permissions: string[];
 }
 
-export function useClaims(): Claims {
+export function useClaims(): Claims | null {
   const { supabase } = useSupabase();
-  const [claims, setClaims] = useState<Claims>({
-    email: null,
-    name: null,
-    roles: [],
-    tier: null,
-    permissions: [],
-  });
+  const [claims, setClaims] = useState<Claims | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
     async function load() {
-      const { data } = await supabase.auth.getUser();
-      const user = data.user;
+      try {
+        const { data } = await supabase.auth.getUser();
+        if (!mounted) return;
 
-      const meta = (user?.raw_app_meta_data as any) || {};
+        const user = data.user;
+        const meta =
+          (user?.app_metadata as Record<string, unknown> | undefined) ??
+          ((user as unknown as { raw_app_meta_data?: Record<string, unknown> })
+            ?.raw_app_meta_data ?? {});
 
-      setClaims({
-        email: user?.email ?? null,
-        name: (user?.user_metadata as any)?.full_name ?? null,
-        roles: meta.roles ?? [],
-        tier: meta.tier ?? null,
-        permissions: meta.permissions ?? [],
-      });
+        setClaims({
+          email: user?.email ?? null,
+          name:
+            ((user?.user_metadata as Record<string, unknown> | undefined)
+              ?.full_name as string | undefined) ?? null,
+          roles: Array.isArray(meta.roles) ? (meta.roles as string[]) : [],
+          tier: typeof meta.tier === 'string' ? (meta.tier as string) : null,
+          permissions: Array.isArray(meta.permissions)
+            ? (meta.permissions as string[])
+            : [],
+        });
+      } catch (error) {
+        if (process.env.NEXT_PUBLIC_LOG_LEVEL === 'debug') {
+          console.error('[useClaims] failed to load claims', error);
+        }
+        if (mounted) {
+          setClaims(null);
+        }
+      }
     }
 
     load();
+
+    return () => {
+      mounted = false;
+    };
   }, [supabase]);
 
   return claims;

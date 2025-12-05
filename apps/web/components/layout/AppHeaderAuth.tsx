@@ -1,49 +1,26 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-
 import UserMenu from '~/components/layout/UserMenu';
-
-function getPageTitle(pathname: string): string {
-  if (pathname === '/home') return 'Home';
-  if (pathname.startsWith('/admin/users')) return 'Users';
-  if (pathname.startsWith('/admin/roles')) return 'Roles';
-  if (pathname.startsWith('/admin/permissions')) return 'Permissions';
-  if (pathname.startsWith('/admin/attributes')) return 'Attributes';
-  if (pathname.startsWith('/admin/modules')) return 'Modules';
-  return '';
-}
+import MainNav from '~/components/layout/main-nav';
+import { useClaims } from '~/components/useClaims';
 
 export default function AppHeaderAuth() {
-  const pathname = usePathname();
-  const pageTitle = getPageTitle(pathname);
-
-  if (process.env.NEXT_PUBLIC_LOG_LEVEL === 'debug') {
-    console.log('[AppHeaderAuth]', { pathname, pageTitle });
-  }
+  const claims = useClaims();
 
   return (
-    <div className="flex items-center justify-between border-b px-4 py-2">
-      <div className="flex items-baseline gap-2">
-        <Link href="/home" className="text-lg font-semibold text-gray-900">
+    <header className="flex items-center justify-between border-b px-4 py-2">
+      <div className="flex flex-1 items-center gap-6">
+        <Link
+          href="/home"
+          className="text-lg font-semibold text-gray-900 hover:text-gray-700"
+        >
           Portal
         </Link>
-        {pageTitle && (
-          <span className="text-sm text-gray-500">{pageTitle}</span>
-        )}
+        <MainNav claims={claims} />
       </div>
 
-      {/* 🔥 Claims-based menu */}
-      <UserMenu />
-
-      {/* Temp sign out*/}
-      <Link
-        href="/auth/signout"
-        className="text-sm text-gray-600 hover:text-gray-900"
-      >
-        Sign out
-      </Link>
-    </div>
+      <UserMenu claims={claims} />
+    </header>
   );
 }
