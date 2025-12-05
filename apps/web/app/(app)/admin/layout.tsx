@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 
 import AdminShell from '~/components/layout/AdminShell';
-import { getClaims } from '~/lib/auth/claims';
 import { requireRole } from '~/lib/auth/guards';
 
 export default async function AdminLayout({
@@ -16,10 +15,6 @@ export default async function AdminLayout({
     redirect('/home');
   }
 
-  // Fetch JWT claims once, server-side
-  const claims = await getClaims();
-  const isAdmin = claims?.roles?.includes('admin') ?? false;
-
-  // AdminShell handles rendering full sidebar + top nav
-  return <AdminShell isAdmin={isAdmin}>{children}</AdminShell>;
+  // AdminShell handles rendering top nav and page scaffold
+  return <AdminShell>{children}</AdminShell>;
 }

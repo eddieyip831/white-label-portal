@@ -16,21 +16,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect('/');
   }
 
-  const normalizedClaims = claims
-    ? {
-        email: claims.email ?? null,
-        roles: Array.isArray(claims.roles) ? claims.roles : [],
-        permissions: Array.isArray(claims.permissions)
-          ? claims.permissions
-          : [],
-        tier: claims.tier ?? 'free',
-        tenantId: claims.tenantId ?? null,
-      }
-    : null;
-
   return (
     <SupabaseProvider>
-      <AppShell claims={normalizedClaims}>{children}</AppShell>
+      <AppShell>{children}</AppShell>
     </SupabaseProvider>
   );
 }

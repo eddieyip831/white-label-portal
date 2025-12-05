@@ -1,5 +1,4 @@
 import UsersList from '~/components/admin/users/users-list';
-import AdminShell from '~/components/layout/AdminShell';
 import { createServerClientWrapper } from '~/lib/supabase/server';
 
 // We type only what we expect from user_profile
@@ -8,6 +7,7 @@ type UserRow = {
   full_name: string | null;
   tier_id: string | null;
   tenant_id: string;
+  [key: string]: unknown;
 };
 
 export default async function UsersPage() {
@@ -24,7 +24,7 @@ export default async function UsersPage() {
     `);
 
   return (
-    <AdminShell isAdmin={true}>
+    <>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Users</h1>
 
@@ -36,8 +36,7 @@ export default async function UsersPage() {
         </a>
       </div>
 
-      {/* FIX: UsersList requires {data}, so we pass it */}
       <UsersList data={(users ?? []) as UserRow[]} />
-    </AdminShell>
+    </>
   );
 }
