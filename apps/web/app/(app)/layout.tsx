@@ -12,7 +12,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   logDebug('auth', 'claims in (app)/layout', claims);
 
-  if (process.env.NODE_ENV === 'production' && !claims) {
+  if (!claims) {
     redirect('/');
   }
 

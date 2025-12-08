@@ -56,7 +56,7 @@ export default async function EditUserPage({
   }
 
   return (
-    <AdminShell isAdmin={true}>
+    <AdminShell>
       <h1 className="mb-4 text-2xl font-semibold">Edit User</h1>
 
       <UserForm

@@ -26,7 +26,7 @@ export default async function CreateUserPage() {
   }
 
   return (
-    <AdminShell isAdmin={true}>
+    <AdminShell>
       <h1 className="mb-4 text-2xl font-semibold">Create User</h1>
 
       <UserForm

@@ -4,6 +4,14 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@kit/ui/dropdown-menu';
+
 import type { Claims } from '~/components/useClaims';
 
 function tierRank(tier?: string | null): number {
@@ -34,6 +42,14 @@ type NavItem = {
 type MainNavProps = {
   claims: Claims | null;
 };
+
+const SUPER_ADMIN_LINKS = [
+  { label: 'Users', href: '/admin/super-admin/users' },
+  { label: 'Roles', href: '/admin/super-admin/roles' },
+  { label: 'Tiers', href: '/admin/super-admin/tiers' },
+  { label: 'Permissions', href: '/admin/super-admin/permissions' },
+  { label: 'Tier Permissions', href: '/admin/super-admin/tier-permissions' },
+];
 
 export default function MainNav({ claims }: MainNavProps) {
   const pathname = usePathname() ?? '';
@@ -81,8 +97,8 @@ export default function MainNav({ claims }: MainNavProps) {
       {
         key: 'super-admin',
         label: 'Super Admin',
-        href: '/admin/system',
-        match: ['/admin/system'],
+        href: SUPER_ADMIN_LINKS[0]?.href ?? '/admin/super-admin',
+        match: ['/admin/super-admin', ...SUPER_ADMIN_LINKS.map((link) => link.href)],
         visible: isSuperAdmin,
       },
     ].filter((item) => item.visible);
@@ -96,6 +112,37 @@ export default function MainNav({ claims }: MainNavProps) {
         const isActive =
           item.match?.some((prefix) => pathname.startsWith(prefix)) ??
           pathname.startsWith(item.href);
+
+        if (item.key === 'super-admin') {
+          return (
+            <DropdownMenu key={item.key}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={[
+                    'flex items-center gap-2 rounded-md px-3 py-1 text-sm transition-colors',
+                    isActive
+                      ? 'bg-gray-900 text-white'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+                  ].join(' ')}
+                >
+                  {item.label}
+                  <span className="text-xs">▾</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" sideOffset={8} className="w-56">
+                <DropdownMenuLabel className="text-[10px] font-semibold uppercase text-gray-500">
+                  Console
+                </DropdownMenuLabel>
+                {SUPER_ADMIN_LINKS.map((link) => (
+                  <DropdownMenuItem asChild key={link.href}>
+                    <Link href={link.href}>{link.label}</Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        }
 
         return (
           <Link
